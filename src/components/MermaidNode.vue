@@ -2,38 +2,29 @@
 import { NodeViewWrapper } from "@tiptap/vue-3";
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from "vue";
 import mermaid from "mermaid";
-import elkLayouts from "@mermaid-js/layout-elk";
 import { useI18n } from "../i18n";
 import { useZoomPan } from "../composables/useZoomPan";
 import { useFullscreen } from "../composables/useFullscreen";
 import { quickAccessTemplates } from "../data/diagramTemplates";
 import DiagramTemplateModal from "./DiagramTemplateModal.vue";
+import HeadingDiagramGallery from "./HeadingDiagramGallery.vue";
+import HeadingDiagramOptionBar from "./HeadingDiagramOptionBar.vue";
 import { useAiMermaidTarget } from "../composables/useAiMermaidTarget";
 import {
-  buildHeadingGallery,
+  ensureElkLayoutLoaders,
+  fixMermaidViewBox,
+  initializeMermaidForEditor,
+  repaintMermaidDark,
+} from "../utils/mermaid-render-helpers";
+import {
   buildHeadingOptionString,
   convertHeadingBlock,
-  defaultHeadingOptions,
   headingSampleFor,
-  meaningfulOptions,
-  mermaidHeadingTypeIds,
-  optionChoices,
   parseHeadingInfo,
-  plantumlTypeIds,
-  typeIdList,
-  validHeadingTypes,
   type ExplicitHeadingOptions,
   type HeadingGalleryItem,
-  type HeadingOptionName,
 } from "../utils/heading2diagram";
 
-let elkLayoutLoadersRegistered = false;
-
-function ensureElkLayoutLoaders(): void {
-  if (elkLayoutLoadersRegistered) return;
-  mermaid.registerLayoutLoaders(elkLayouts);
-  elkLayoutLoadersRegistered = true;
-}
 
 const { t } = useI18n();
 
@@ -213,20 +204,8 @@ const showGeneratedCode = ref(false);
 const showPreviewCode = computed(
   () => isEditHeading.value && (showGeneratedCode.value || previewLanguage.value !== "mermaid"),
 );
-const editOptionNames = computed<readonly HeadingOptionName[]>(() =>
-  editHeadingType.value ? meaningfulOptions[editHeadingType.value] ?? [] : [],
-);
-const plantumlHeadingTypeIds = typeIdList.filter((id) => plantumlTypeIds.has(id));
 
-const editOptionValue = (name: HeadingOptionName): string =>
-  editHeadingOptions.value[name] ?? defaultHeadingOptions[name];
 
-const setEditOption = (name: HeadingOptionName, value: string) => {
-  const next = { ...editHeadingOptions.value };
-  if (value === defaultHeadingOptions[name]) delete next[name];
-  else next[name] = value;
-  editHeadingOptions.value = next;
-};
 
 const insertHeadingSample = () => {
   if (editHeadingType.value) editCode.value = headingSampleFor(editHeadingType.value);
@@ -304,87 +283,14 @@ const endSplitDrag = () => {
   }
 };
 
-// Mermaid pre-calculates foreignObject height before HTML layout, so wrapped
-// text labels overflow their declared bounds and get clipped. Fix: expand each
-// foreignObject to its actual scrollHeight, then recompute the SVG viewBox.
-const fixMermaidViewBox = async (containerEl: HTMLElement): Promise<void> => {
-  const svgEl = containerEl.querySelector('svg') as SVGSVGElement | null;
-  if (!svgEl) return;
 
-  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-
-  if (!containerEl.isConnected) return;
-
-  try {
-    for (const fo of Array.from(svgEl.querySelectorAll<SVGForeignObjectElement>('foreignObject'))) {
-      const inner = fo.firstElementChild as HTMLElement | null;
-      if (!inner) continue;
-      const declared = parseFloat(fo.getAttribute('height') ?? '0');
-      const actual = inner.scrollHeight;
-      if (actual > declared + 1) {
-        fo.setAttribute('height', String(actual + 2));
-      }
-    }
-
-    const bbox = svgEl.getBBox();
-    if (bbox.width > 0 && bbox.height > 0) {
-      const pad = 8;
-      svgEl.setAttribute(
-        'viewBox',
-        `${bbox.x - pad} ${bbox.y - pad} ${bbox.width + pad * 2} ${bbox.height + pad * 2}`
-      );
-    }
-  } catch {
-    // getBBox() unavailable in some environments
-  }
-};
-
-/** Mermaid settings shared by the editor preview and the gallery thumbnails. */
-const initializeMermaidForEditor = () => {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "base",
-    securityLevel: "loose",
-    themeVariables: isDark.value
-      ? {
-          // Dark palette — overrides every Mermaid "base" theme color so
-          // diagrams stay legible even when the markdown ships its own
-          // classDef fill:#... declarations.
-          background: "#1a202c",
-          primaryColor: "#2d3748",
-          primaryTextColor: "#f1f5f9",
-          primaryBorderColor: "#94a3b8",
-          secondaryColor: "#374151",
-          secondaryTextColor: "#f1f5f9",
-          secondaryBorderColor: "#94a3b8",
-          tertiaryColor: "#1f2937",
-          tertiaryTextColor: "#f1f5f9",
-          tertiaryBorderColor: "#94a3b8",
-          mainBkg: "#2d3748",
-          secondBkg: "#374151",
-          tertiaryBkg: "#1f2937",
-          nodeBorder: "#94a3b8",
-          clusterBkg: "#1f2937",
-          clusterBorder: "#6b7280",
-          defaultLinkColor: "#cbd5e1",
-          titleColor: "#f1f5f9",
-          edgeLabelBackground: "#1f2937",
-          textColor: "#f1f5f9",
-          nodeTextColor: "#f1f5f9",
-          lineColor: "#cbd5e1",
-          labelTextColor: "#f1f5f9",
-          labelBackground: "#1f2937",
-        }
-      : undefined,
-  });
-};
 
 const renderPreview = async () => {
   if (!previewContainerRef.value || !isEditing.value) return;
 
   ensureElkLayoutLoaders();
 
-  initializeMermaidForEditor();
+  initializeMermaidForEditor(isDark.value);
 
   try {
     previewError.value = null;
@@ -538,42 +444,7 @@ const renderMermaid = async () => {
 
   ensureElkLayoutLoaders();
 
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "base",
-    securityLevel: "loose",
-    themeVariables: isDark.value
-      ? {
-          // Dark palette — overrides every Mermaid "base" theme color so
-          // diagrams stay legible even when the markdown ships its own
-          // classDef fill:#... declarations.
-          background: "#1a202c",
-          primaryColor: "#2d3748",
-          primaryTextColor: "#f1f5f9",
-          primaryBorderColor: "#94a3b8",
-          secondaryColor: "#374151",
-          secondaryTextColor: "#f1f5f9",
-          secondaryBorderColor: "#94a3b8",
-          tertiaryColor: "#1f2937",
-          tertiaryTextColor: "#f1f5f9",
-          tertiaryBorderColor: "#94a3b8",
-          mainBkg: "#2d3748",
-          secondBkg: "#374151",
-          tertiaryBkg: "#1f2937",
-          nodeBorder: "#94a3b8",
-          clusterBkg: "#1f2937",
-          clusterBorder: "#6b7280",
-          defaultLinkColor: "#cbd5e1",
-          titleColor: "#f1f5f9",
-          edgeLabelBackground: "#1f2937",
-          textColor: "#f1f5f9",
-          nodeTextColor: "#f1f5f9",
-          lineColor: "#cbd5e1",
-          labelTextColor: "#f1f5f9",
-          labelBackground: "#1f2937",
-        }
-      : undefined,
-  });
+  initializeMermaidForEditor(isDark.value);
 
   try {
     error.value = null;
@@ -616,119 +487,6 @@ const renderMermaid = async () => {
     if (containerRef.value) containerRef.value.innerHTML = "";
   }
 };
-
-// Post-process the rendered SVG to force a dark palette. Mermaid's inline
-// <style> + classDef styles win against scoped CSS, so we walk the DOM and
-// set attributes/inline styles directly — that wins against everything.
-const DARK_NODE_FILL = "#2d3748";
-const DARK_NODE_STROKE = "#94a3b8";
-const DARK_CLUSTER_FILL = "#1f2937";
-const DARK_TEXT = "#f1f5f9";
-const DARK_EDGE = "#cbd5e1";
-
-function repaintMermaidDark(container: HTMLElement): void {
-  const svg = container.querySelector("svg");
-  if (!svg) return;
-
-  // Inject a high-priority style block AFTER Mermaid's own <style>. Cascade
-  // order means later rules win on tie — combined with `!important` this
-  // beats any classDef-emitted fill without removing Mermaid's own style
-  // (which carries marker geometry / display rules we must keep).
-  const overrideStyleId = "mermark-mermaid-dark-override";
-  let overrideStyle = svg.querySelector(`style#${overrideStyleId}`);
-  if (!overrideStyle) {
-    overrideStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
-    overrideStyle.id = overrideStyleId;
-    svg.appendChild(overrideStyle);
-  }
-  overrideStyle.textContent = `
-    g.node rect, g.node polygon, g.node ellipse, g.node circle, g.node path:not(.arrowMarkerPath),
-    .label-container, .basic.label-container {
-      fill: ${DARK_NODE_FILL} !important;
-      stroke: ${DARK_NODE_STROKE} !important;
-    }
-    .cluster rect, .cluster polygon {
-      fill: ${DARK_CLUSTER_FILL} !important;
-      stroke: #6b7280 !important;
-    }
-    text, tspan { fill: ${DARK_TEXT} !important; }
-    foreignObject *, .nodeLabel, .nodeLabel *, .cluster-label *, .edgeLabel * {
-      color: ${DARK_TEXT} !important;
-    }
-    .edgePath path:not(.arrowMarkerPath), .flowchart-link, path.path,
-    line, .messageLine0, .messageLine1 {
-      stroke: ${DARK_EDGE} !important;
-    }
-  `;
-
-  const setStyleImportant = (el: SVGElement | HTMLElement, prop: string, val: string) => {
-    el.style.setProperty(prop, val, "important");
-  };
-
-  const isInsideMarker = (el: Element): boolean => !!el.closest("marker");
-
-  // 1) Every shape inside a node group — flowchart nodes, sequence
-  // actors, etc. Walk every rect/polygon/ellipse/circle/path under a
-  // .node (no matter how deep), skipping arrow-marker geometry.
-  svg.querySelectorAll<SVGElement>(
-    "g.node rect, g.node polygon, g.node ellipse, g.node circle, g.node path"
-  ).forEach((el) => {
-    if (isInsideMarker(el)) return;
-    el.setAttribute("fill", DARK_NODE_FILL);
-    el.setAttribute("stroke", DARK_NODE_STROKE);
-    setStyleImportant(el, "fill", DARK_NODE_FILL);
-    setStyleImportant(el, "stroke", DARK_NODE_STROKE);
-  });
-
-  // 2) Free-standing label containers Mermaid emits outside .node groups.
-  svg.querySelectorAll<SVGElement>(".label-container, .basic.label-container").forEach((el) => {
-    el.setAttribute("fill", DARK_NODE_FILL);
-    el.setAttribute("stroke", DARK_NODE_STROKE);
-    setStyleImportant(el, "fill", DARK_NODE_FILL);
-    setStyleImportant(el, "stroke", DARK_NODE_STROKE);
-  });
-
-  // 3) Subgraph / cluster backgrounds — slightly darker, distinct border.
-  svg.querySelectorAll<SVGElement>(".cluster rect, .cluster polygon, .cluster path").forEach((el) => {
-    if (isInsideMarker(el)) return;
-    el.setAttribute("fill", DARK_CLUSTER_FILL);
-    el.setAttribute("stroke", "#6b7280");
-    setStyleImportant(el, "fill", DARK_CLUSTER_FILL);
-    setStyleImportant(el, "stroke", "#6b7280");
-  });
-
-  // 4) SVG <text> + <tspan> — all label text rendered as plain SVG.
-  svg.querySelectorAll<SVGElement>("text, tspan").forEach((el) => {
-    if (isInsideMarker(el)) return;
-    el.setAttribute("fill", DARK_TEXT);
-    setStyleImportant(el, "fill", DARK_TEXT);
-  });
-
-  // 5) foreignObject labels — Mermaid renders HTML inside SVG for many
-  // diagram types. Force a light color across the entire HTML subtree.
-  svg.querySelectorAll<HTMLElement>("foreignObject *").forEach((el) => {
-    setStyleImportant(el, "color", DARK_TEXT);
-    if (el.style.backgroundColor && el.style.backgroundColor !== "transparent") {
-      setStyleImportant(el, "background-color", DARK_CLUSTER_FILL);
-    }
-  });
-
-  // 6) Edges and arrows — strokes only. Exclude paths inside <marker>
-  // (arrow heads) so we don't paint over the marker-defined fill or add
-  // an oversized stroke that warps the arrow geometry.
-  svg.querySelectorAll<SVGElement>(".edgePath path, .flowchart-link, path.path, line, .messageLine0, .messageLine1").forEach((el) => {
-    if (isInsideMarker(el)) return;
-    if (el.classList.contains("arrowMarkerPath")) return;
-    el.setAttribute("stroke", DARK_EDGE);
-    setStyleImportant(el, "stroke", DARK_EDGE);
-  });
-
-  // 7) Arrow markers — fill, not stroke.
-  svg.querySelectorAll<SVGElement>("marker path, marker polygon").forEach((el) => {
-    el.setAttribute("fill", DARK_EDGE);
-    setStyleImportant(el, "fill", DARK_EDGE);
-  });
-}
 
 onMounted(() => {
   renderMermaid();
@@ -781,7 +539,6 @@ watch(
 
 /** Loads the saved node state into the editing refs. */
 const resetEditState = () => {
-  galleryRenderToken++;
   headingPreviewTab.value = "preview";
   const headingType = props.node.attrs.headingType ?? null;
   editHeadingType.value = headingType;
@@ -852,101 +609,19 @@ watch([editHeadingType, editHeadingOptions], () => {
   }
 });
 
-/** Types the text being edited can be drawn as; the rest are marked in the picker. */
-const applicableHeadingTypes = computed(
-  () => new Set(isEditing.value && isEditHeading.value ? validHeadingTypes(editCode.value) : []),
-);
-const headingTypeLabel = (typeId: string): string =>
-  applicableHeadingTypes.value.has(typeId) ? typeId : `${typeId} (${t.value.headingDiagramNotApplicable})`;
 
 // ===== Heading-format gallery =====
 // Shows the source drawn with every applicable type and with each value of
 // each option of the current type, so the settings can be compared and picked.
 const headingPreviewTab = ref<"preview" | "gallery">("preview");
 const isGalleryOpen = computed(() => isEditing.value && isEditHeading.value && headingPreviewTab.value === "gallery");
-/** Debounced copy of the text being edited (the gallery redraws many diagrams). */
-const galleryCode = ref("");
-let galleryCodeTimeout: ReturnType<typeof setTimeout> | null = null;
-watch(editCode, (code) => {
-  if (galleryCodeTimeout) clearTimeout(galleryCodeTimeout);
-  galleryCodeTimeout = setTimeout(() => { galleryCode.value = code; }, 500);
-});
 watch(isGalleryOpen, async (open) => {
-  if (open) {
-    galleryCode.value = editCode.value;
-  } else if (isEditing.value) {
+  if (!open && isEditing.value) {
     // The preview pane was unmounted while the gallery was shown; redraw it.
     await nextTick();
     renderPreview();
   }
 });
-
-const galleryItems = computed<HeadingGalleryItem[]>(() =>
-  isGalleryOpen.value && editHeadingType.value
-    ? buildHeadingGallery(galleryCode.value, editHeadingType.value, editHeadingOptions.value)
-    : [],
-);
-const galleryTypeItems = computed(() => galleryItems.value.filter((item) => item.group === "type"));
-const galleryOptionGroups = computed(() =>
-  editOptionNames.value
-    .map((name) => ({ name, items: galleryItems.value.filter((item) => item.optionName === name) }))
-    .filter((group) => group.items.length > 0),
-);
-
-/** Card errors (conversion or Mermaid) by item key. */
-const galleryErrors = ref<Record<string, string>>({});
-const galleryThumbs = new Map<string, HTMLElement>();
-const setGalleryThumb = (key: string, el: unknown) => {
-  if (el instanceof HTMLElement) galleryThumbs.set(key, el);
-  else galleryThumbs.delete(key);
-};
-/** Rendered (and post-processed) SVG markup by theme + Mermaid source. */
-const gallerySvgCache = new Map<string, string>();
-let galleryRenderToken = 0;
-
-const renderGallery = async () => {
-  const token = ++galleryRenderToken;
-  const items = galleryItems.value;
-  const errors: Record<string, string> = {};
-  for (const item of items) {
-    if (!item.conversion.ok) errors[item.key] = item.conversion.error ?? t.value.diagramError;
-  }
-  galleryErrors.value = errors;
-  if (!items.length) return;
-  await nextTick();
-  ensureElkLayoutLoaders();
-  initializeMermaidForEditor();
-  for (const [index, item] of items.entries()) {
-    if (token !== galleryRenderToken) return; // superseded by a newer render
-    if (!item.conversion.ok || item.conversion.language !== "mermaid") continue;
-    const el = galleryThumbs.get(item.key);
-    if (!el) continue;
-    const code = item.conversion.code;
-    const cacheKey = `${isDark.value ? "dark" : "light"}\n${code}`;
-    const cached = gallerySvgCache.get(cacheKey);
-    if (cached !== undefined) {
-      el.innerHTML = cached;
-      continue;
-    }
-    el.innerHTML = '<span class="heading-gallery-loading">…</span>';
-    try {
-      const { svg } = await mermaid.render(`mermaid-gallery-${token}-${index}`, code.replace(/\\n/g, "<br/>"));
-      if (token !== galleryRenderToken) return;
-      el.innerHTML = svg;
-      await fixMermaidViewBox(el);
-      if (isDark.value) repaintMermaidDark(el);
-      if (gallerySvgCache.size > 300) gallerySvgCache.clear();
-      gallerySvgCache.set(cacheKey, el.innerHTML);
-    } catch (e: unknown) {
-      if (token !== galleryRenderToken) return;
-      el.innerHTML = "";
-      galleryErrors.value = { ...galleryErrors.value, [item.key]: e instanceof Error ? e.message : t.value.diagramError };
-    }
-  }
-};
-
-watch(galleryItems, () => { renderGallery(); });
-watch(isDark, () => { if (isGalleryOpen.value) renderGallery(); });
 
 /** Click: take over the card's type and options (Save still writes them). */
 const applyGalleryItem = (item: HeadingGalleryItem) => {
@@ -958,8 +633,6 @@ const applyGalleryItemAndPreview = (item: HeadingGalleryItem) => {
   applyGalleryItem(item);
   headingPreviewTab.value = "preview";
 };
-const galleryCardTitle = (item: HeadingGalleryItem): string =>
-  [item.typeId, buildHeadingOptionString(item.typeId, item.options)].filter(Boolean).join(" ");
 
 // Re-render the in-edit preview pane whenever the AI proposes (or revokes) a
 // candidate so the user sees the proposal immediately while still editing.
@@ -1074,28 +747,12 @@ watch(aiPreviewCode, () => {
           <span class="editor-topbar-title">{{ isEditHeading ? t.headingDiagramEditor : 'Mermaid Editor' }}</span>
           <!-- Heading-format mode: diagram type + the options that apply to it -->
           <div v-if="isEditHeading" class="editor-topbar-templates heading-controls">
-            <label class="heading-control">
-              <span>{{ t.headingDiagramType }}</span>
-              <select v-model="editHeadingType" class="heading-select" data-testid="heading-type-select">
-                <optgroup label="Mermaid">
-                  <option v-for="id in mermaidHeadingTypeIds" :key="id" :value="id">{{ headingTypeLabel(id) }}</option>
-                </optgroup>
-                <optgroup label="PlantUML">
-                  <option v-for="id in plantumlHeadingTypeIds" :key="id" :value="id">{{ headingTypeLabel(id) }}</option>
-                </optgroup>
-              </select>
-            </label>
-            <label v-for="name in editOptionNames" :key="name" class="heading-control">
-              <span>{{ name }}</span>
-              <select
-                class="heading-select"
-                :value="editOptionValue(name)"
-                :data-testid="`heading-option-${name}`"
-                @change="setEditOption(name, ($event.target as HTMLSelectElement).value)"
-              >
-                <option v-for="choice in optionChoices[name]" :key="choice" :value="choice">{{ choice }}</option>
-              </select>
-            </label>
+            <HeadingDiagramOptionBar
+              v-if="editHeadingType"
+              v-model:type-id="editHeadingType"
+              v-model:options="editHeadingOptions"
+              :source="editCode"
+            />
             <button class="btn-template" :title="t.headingDiagramSampleHint" @click="insertHeadingSample">
               {{ t.headingDiagramSample }}
             </button>
@@ -1207,59 +864,14 @@ watch(aiPreviewCode, () => {
               <span v-else class="heading-gallery-hint">{{ t.headingDiagramGalleryHint }}</span>
             </div>
             <!-- Gallery: the same source under every applicable type and option value -->
-            <div v-if="isGalleryOpen" class="heading-gallery" data-testid="heading-gallery">
-              <section class="heading-gallery-section">
-                <h3 class="heading-gallery-title">{{ t.headingDiagramGalleryTypes }}</h3>
-                <div v-if="!galleryTypeItems.length" class="heading-gallery-empty">{{ t.headingDiagramGalleryEmpty }}</div>
-                <div class="heading-gallery-grid">
-                  <button
-                    v-for="item in galleryTypeItems"
-                    :key="item.key"
-                    class="heading-gallery-card"
-                    :class="{ current: item.current }"
-                    :title="galleryCardTitle(item)"
-                    :data-testid="`heading-gallery-${item.key}`"
-                    @click="applyGalleryItem(item)"
-                    @dblclick="applyGalleryItemAndPreview(item)"
-                  >
-                    <div v-if="item.conversion.language !== 'mermaid'" class="heading-gallery-code">{{ item.conversion.code }}</div>
-                    <div v-else :ref="(el) => setGalleryThumb(item.key, el)" class="heading-gallery-thumb"></div>
-                    <div v-if="galleryErrors[item.key]" class="heading-gallery-error">{{ galleryErrors[item.key] }}</div>
-                    <div class="heading-gallery-label">
-                      <span>{{ item.label }}</span>
-                      <span v-if="item.conversion.language !== 'mermaid'" class="heading-gallery-tag">PlantUML</span>
-                      <span v-if="item.current" class="heading-gallery-tag current">{{ t.headingDiagramGalleryCurrent }}</span>
-                    </div>
-                  </button>
-                </div>
-              </section>
-              <section v-if="galleryOptionGroups.length" class="heading-gallery-section">
-                <h3 class="heading-gallery-title">{{ t.headingDiagramGalleryOptions }} — {{ editHeadingType }}</h3>
-                <div v-for="group in galleryOptionGroups" :key="group.name" class="heading-gallery-option-group">
-                  <h4 class="heading-gallery-subtitle">--{{ group.name }}</h4>
-                  <div class="heading-gallery-grid">
-                    <button
-                      v-for="item in group.items"
-                      :key="item.key"
-                      class="heading-gallery-card"
-                      :class="{ current: item.current }"
-                      :title="galleryCardTitle(item)"
-                      :data-testid="`heading-gallery-${item.key}`"
-                      @click="applyGalleryItem(item)"
-                      @dblclick="applyGalleryItemAndPreview(item)"
-                    >
-                      <div v-if="item.conversion.ok && item.conversion.language !== 'mermaid'" class="heading-gallery-code">{{ item.conversion.code }}</div>
-                      <div v-else-if="item.conversion.ok" :ref="(el) => setGalleryThumb(item.key, el)" class="heading-gallery-thumb"></div>
-                      <div v-if="galleryErrors[item.key]" class="heading-gallery-error">{{ galleryErrors[item.key] }}</div>
-                      <div class="heading-gallery-label">
-                        <span>{{ item.label }}</span>
-                        <span v-if="item.current" class="heading-gallery-tag current">{{ t.headingDiagramGalleryCurrent }}</span>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </div>
+            <HeadingDiagramGallery
+              v-if="isGalleryOpen && editHeadingType"
+              :source="editCode"
+              :type-id="editHeadingType"
+              :options="editHeadingOptions"
+              @select="applyGalleryItem"
+              @select-and-preview="applyGalleryItemAndPreview"
+            />
             <template v-else>
             <!-- Input-condition errors need the full text, not the one-line toolbar slot. -->
             <div v-if="isEditHeading && previewError" class="mermaid-error heading-preview-error" data-testid="heading-error">{{ previewError }}</div>
@@ -2087,128 +1699,6 @@ watch(aiPreviewCode, () => {
   white-space: nowrap;
 }
 
-.heading-gallery {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px 16px 24px;
-}
-
-.heading-gallery-section + .heading-gallery-section {
-  margin-top: 20px;
-}
-
-.heading-gallery-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.heading-gallery-subtitle {
-  margin: 12px 0 6px;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: "Fira Code", "Consolas", monospace;
-  color: var(--text-secondary);
-}
-
-.heading-gallery-empty {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.heading-gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 10px;
-}
-
-.heading-gallery-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 8px;
-  text-align: left;
-  color: inherit;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.heading-gallery-card:hover {
-  border-color: var(--primary);
-}
-
-.heading-gallery-card.current {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
-}
-
-.heading-gallery-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 140px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.heading-gallery-thumb :deep(svg) {
-  max-width: 100% !important;
-  max-height: 140px;
-  width: auto;
-  height: auto;
-}
-
-.heading-gallery-loading {
-  color: var(--text-muted);
-}
-
-.heading-gallery-code {
-  height: 140px;
-  margin: 0;
-  overflow: hidden;
-  font-family: "Fira Code", "Consolas", monospace;
-  font-size: 10px;
-  line-height: 1.35;
-  white-space: pre;
-  color: var(--text-secondary);
-}
-
-.heading-gallery-error {
-  max-height: 60px;
-  overflow: hidden;
-  font-size: 11px;
-  color: var(--error-color, #dc2626);
-}
-
-.heading-gallery-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-family: "Fira Code", "Consolas", monospace;
-  color: var(--text-primary);
-}
-
-.heading-gallery-tag {
-  padding: 0 5px;
-  font-size: 10px;
-  font-family: inherit;
-  color: var(--text-muted);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-}
-
-.heading-gallery-tag.current {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
 .heading-preview-error {
   margin: 12px;
   white-space: pre-wrap;
@@ -2224,24 +1714,6 @@ watch(aiPreviewCode, () => {
 .heading-controls {
   align-items: center;
   gap: 10px;
-}
-
-.heading-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.heading-select {
-  padding: 3px 6px;
-  font-size: 12px;
-  color: var(--text-primary);
-  background: var(--bg-input);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
 }
 
 .heading-controls .btn-template:disabled,

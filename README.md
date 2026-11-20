@@ -478,6 +478,8 @@ Click the **Headings** button in the toolbar (or *Insert → Insert heading-form
 - Rendered types: `hier-flow`, `hier-block`, `struct-flow`, `fishBone`, `pie`, `venn`, `quadrant`. The PlantUML-backed types (`hier-mind`, `hier-mindlabel`, `table*`) show the generated code instead of a preview.
 - Each line may carry `|label|`, a line style, a shape and a `:#color`, e.g. `### |review|solidArrow;hex;Proposal:#f88`. See the [format reference](https://github.com/sekita/heading2diagram/blob/main/docs/headingBasedFormatSyntax.md).
 - The diagram editor previews as you type, lists warnings (typos, level jumps), shows the generated Mermaid, and can turn the block into an ordinary Mermaid diagram for manual fine-tuning.
+- **To diagram** converts headings already in the document: put the cursor in a heading (or select several) and the run of headings becomes one heading-format block.
+- **Heading preview** opens Code + Preview with the right pane drawing the *whole file* as heading2diagram input, as `heading2diagram.py FILE` would. The file is not changed; the chosen type and options are remembered per file. The pane can be switched back to **Markdown** at any time.
 - The **Compare** tab draws the outline with every diagram type it fits and with each value of each option of the current type. Click a thumbnail to adopt its settings, double-click to adopt them and return to the preview.
 
 ---

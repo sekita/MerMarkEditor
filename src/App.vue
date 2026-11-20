@@ -75,6 +75,8 @@ import PdfExportDialog from './components/PdfExportDialog.vue';
 import MarpPreviewDialog from './components/MarpPreviewDialog.vue';
 import MarpToolbar from './components/MarpToolbar.vue';
 import MarpLivePreview from './components/MarpLivePreview.vue';
+import HeadingDocumentPreview from './components/HeadingDocumentPreview.vue';
+import { useHeadingPreview } from './composables/useHeadingPreview';
 import NewFileModal from './components/NewFileModal.vue';
 import { getFrontmatterKey, setFrontmatterKey, removeFrontmatterKey } from './utils/frontmatter';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
@@ -990,6 +992,30 @@ const toggleSplitEditor = async () => {
   splitEditorActive.value = false;
   await nextTick();
   isLoadingContent.value = false;
+};
+
+// ============ Whole-file heading preview ============
+// Code + Preview whose right pane draws the file with heading2diagram instead
+// of rendering Markdown. Per-file settings; the file itself is never changed.
+const headingPreview = useHeadingPreview();
+const headingPreviewKey = computed(() =>
+  activeTab.value ? (activeTab.value.filePath ?? `tab:${activeTab.value.id}`) : null,
+);
+const headingPreviewOn = computed(() =>
+  splitEditorActive.value && !isMarp.value && !!headingPreviewKey.value && headingPreview.isEnabled(headingPreviewKey.value),
+);
+const setHeadingPreviewMode = (enabled: boolean) => {
+  if (headingPreviewKey.value) headingPreview.setEnabled(headingPreviewKey.value, enabled);
+};
+const toggleHeadingPreview = async () => {
+  if (!headingPreviewKey.value) return;
+  if (headingPreviewOn.value) {
+    setHeadingPreviewMode(false);
+    if (splitEditorActive.value) await toggleSplitEditor();
+    return;
+  }
+  setHeadingPreviewMode(true);
+  if (!splitEditorActive.value) await toggleSplitEditor();
 };
 
 const handleSplitMarkdownInput = (value: string) => {
@@ -2076,7 +2102,7 @@ const appCommands = useAppCommands({
     codeView: codeView.value, splitEditor: splitEditorActive.value, splitView: isSplitActive.value,
     hasDocument: !!activeTab.value, canDiff: canShowDiff.value, canCompare: canCompareTabs.value,
     diff: showDiffPreview.value, toc: showTocPanel.value, ai: aiPanelOpen.value,
-    marp: isMarp.value, marpPreview: showMarpPreview.value,
+    marp: isMarp.value, marpPreview: showMarpPreview.value, headingPreview: headingPreviewOn.value,
     modal: !!pickerMode.value || showWorkspaceQuickSwitcher.value || !!tmpRecovery.value || showSettingsModal.value || showShortcutsModal.value || showNewFileModal.value ||
       showPdfDialog.value || showMarpDialog.value || showSaveConfirmDialog.value || showTabCloseDialog.value ||
       showConflictModal.value || showPreSaveConflictModal.value || showExternalLinkDialog.value ||
@@ -2097,6 +2123,7 @@ const appCommands = useAppCommands({
     'customize-layout': () => openSettings(true), 'restore-layout': () => openSettings(true, true),
     'toggle-toc': toggleTocPanel, 'toggle-code-view': toggleCodeView, 'toggle-split-view': toggleSplit,
     'toggle-split-editor': toggleSplitEditor, 'toggle-diff': toggleDiffPreview, 'compare-tabs': compareTabs,
+    'heading-preview': toggleHeadingPreview,
     'ai-toggle': toggleAiPanel, 'workspace-switcher': () => openWorkspacePicker('all'),
     'show-shortcuts': () => { showShortcutsModal.value = !showShortcutsModal.value; },
     'whats-new': () => { showWhatsNewModal.value = true; },
@@ -2226,7 +2253,33 @@ useCommandShortcuts(appCommands);
             />
           </div>
           <div class="split-editor-preview">
+            <!-- Preview as rendered Markdown, or as a heading2diagram diagram of the whole file -->
+            <div v-if="!isMarp && headingPreviewKey" class="split-preview-modebar" role="tablist">
+              <button
+                role="tab"
+                class="split-preview-mode"
+                :class="{ active: !headingPreviewOn }"
+                :aria-selected="!headingPreviewOn"
+                data-testid="split-preview-mode-markdown"
+                @click="setHeadingPreviewMode(false)"
+              >{{ t.headingPreviewModeMarkdown }}</button>
+              <button
+                role="tab"
+                class="split-preview-mode"
+                :class="{ active: headingPreviewOn }"
+                :aria-selected="headingPreviewOn"
+                :title="t.headingPreviewTooltip"
+                data-testid="split-preview-mode-heading"
+                @click="setHeadingPreviewMode(true)"
+              >{{ t.headingPreviewModeDiagram }}</button>
+            </div>
+            <HeadingDocumentPreview
+              v-if="headingPreviewOn && headingPreviewKey"
+              :markdown="splitMarkdownSource"
+              :preview-key="headingPreviewKey"
+            />
             <Editor
+              v-show="!headingPreviewOn"
               :model-value="splitPreviewHtml"
               :file-path="activeTab?.filePath || null"
               :editable="false"
@@ -2666,6 +2719,42 @@ useCommandShortcuts(appCommands);
 .split-editor-preview {
   overflow-y: auto;
   background: var(--editor-container-bg);
+}
+
+.split-preview-modebar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.split-preview-mode {
+  padding: 3px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+}
+
+.split-preview-mode:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.split-preview-mode:last-child {
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+}
+
+.split-preview-mode.active {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .drag-drop-overlay {

@@ -131,6 +131,14 @@ const zhCN: Translations = {
   headingDiagramGalleryCurrent: '当前',
   headingDiagramGalleryEmpty: '没有可以绘制此文本的图表类型。',
   enterHeadingCode: '# 根\n## 子\n### 孙',
+  headingsToDiagram: '转为图表',
+  headingsToDiagramTooltip: '将所选标题（或光标处连续的标题）转换为标题格式图表',
+  headingsToDiagramMenu: '将标题转换为图表',
+  headingPreview: '标题图预览',
+  headingPreviewTooltip: '将整个文件作为标题格式图表预览（不修改文件）',
+  headingPreviewModeMarkdown: 'Markdown',
+  headingPreviewModeDiagram: '标题图',
+  headingPreviewFileNote: '整个文件作为 heading2diagram 的输入进行转换，不会修改文件。',
 
   // Toolbar - Footnotes
   footnote: '脚注',

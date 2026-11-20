@@ -1512,3 +1512,18 @@ export function buildHeadingGallery(
   }
   return items;
 }
+
+/** Preference order used when a type has to be picked automatically. */
+const suggestionOrder: readonly HeadingTypeId[] = ['hier-flow', 'struct-flow', 'quadrant', 'venn', 'pie', 'table'];
+
+/**
+ * Picks a type the source can be drawn as: `hier-flow` for a single tree,
+ * `struct-flow` for several roots, then the more specialised types.
+ * Falls back to `hier-flow` (which then reports why it cannot be drawn).
+ */
+export function suggestHeadingType(source: string): HeadingTypeId {
+  for (const typeId of suggestionOrder) {
+    if (runHeading2Diagram(source, [typeId]).exitCode === 0) return typeId;
+  }
+  return DEFAULT_HEADING_TYPE;
+}

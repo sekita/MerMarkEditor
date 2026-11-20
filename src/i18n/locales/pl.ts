@@ -131,6 +131,14 @@ const pl: Translations = {
   headingDiagramGalleryCurrent: 'bieżący',
   headingDiagramGalleryEmpty: 'Żaden typ diagramu nie pasuje do tego tekstu.',
   enterHeadingCode: '# Korzeń\n## Dziecko\n### Wnuk',
+  headingsToDiagram: 'Na diagram',
+  headingsToDiagramTooltip: 'Zamień zaznaczone nagłówki (lub nagłówki wokół kursora) na diagram z nagłówków',
+  headingsToDiagramMenu: 'Zamień nagłówki na diagram',
+  headingPreview: 'Podgląd nagłówków',
+  headingPreviewTooltip: 'Podgląd całego pliku jako diagramu z nagłówków (plik nie jest zmieniany)',
+  headingPreviewModeMarkdown: 'Markdown',
+  headingPreviewModeDiagram: 'Diagram z nagłówków',
+  headingPreviewFileNote: 'Cały plik jest czytany jako wejście heading2diagram. Plik nie jest zmieniany.',
 
   // Toolbar - Footnotes
   footnote: 'Przypis',

@@ -131,6 +131,14 @@ const en: Translations = {
   headingDiagramGalleryCurrent: 'current',
   headingDiagramGalleryEmpty: 'No diagram type can draw this text.',
   enterHeadingCode: '# Root\n## Child\n### Grandchild',
+  headingsToDiagram: 'To diagram',
+  headingsToDiagramTooltip: 'Convert the selected headings (or the headings around the cursor) into a heading-format diagram',
+  headingsToDiagramMenu: 'Convert headings to diagram',
+  headingPreview: 'Heading preview',
+  headingPreviewTooltip: 'Preview the whole file as a heading-format diagram (the file is not changed)',
+  headingPreviewModeMarkdown: 'Markdown',
+  headingPreviewModeDiagram: 'Heading diagram',
+  headingPreviewFileNote: 'The whole file is read as heading2diagram input. The file is not changed.',
 
   // Toolbar - Footnotes
   footnote: 'Footnote',

@@ -251,3 +251,110 @@ test('compare tab: every type and option value side by side, click to adopt', as
     '', 'Outro',
   ].join('\n'));
 });
+
+const outlineFile = [
+  '分類・階層図 hier-mind, hier-block, hier-flow 構造化フローチャート struct-flow 因果関係 fishbone',
+  '',
+  '# A1',
+  '## A11',
+  '## A12',
+  '### A121',
+  '',
+].join('\n');
+
+test('convert headings in the document into a heading-format diagram', async ({ page }) => {
+  const fs = await setupTauriMocks(page, { initialFs: { [path]: outlineFile }, openFilePath: path });
+  await page.goto('/');
+  await expect(page.locator('.ProseMirror h1')).toHaveText('A1');
+  await page.waitForTimeout(400);
+  const button = page.locator('.headings-to-diagram-btn');
+
+  // Not available while the cursor is in ordinary text.
+  await page.locator('.ProseMirror p').first().click();
+  await expect(button).toBeDisabled();
+
+  // Cursor in any heading: the whole run of headings becomes one diagram.
+  await page.locator('.ProseMirror h2').first().click();
+  await expect(button).toBeEnabled();
+  await button.click();
+  const diagram = diagrams(page).first();
+  await expect(diagram).toHaveAttribute('data-heading-type', 'hier-flow');
+  await expect(diagram.locator('.mermaid-content svg')).toContainText('A121');
+  await expect(page.locator('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror p').first()).toContainText('分類・階層図');
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => fs.getFs()[path]).toBe([
+    '分類・階層図 hier-mind, hier-block, hier-flow 構造化フローチャート struct-flow 因果関係 fishbone',
+    '',
+    fence('hier-flow', ['# A1', '## A11', '## A12', '### A121']),
+    '',
+  ].join('\n'));
+
+  // Undo brings the headings back.
+  await page.locator('.ProseMirror p').first().click();
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.ProseMirror h3')).toHaveText('A121');
+  await expect(diagrams(page)).toHaveCount(0);
+});
+
+test('preview the whole file as a heading diagram without changing it', async ({ page }, testInfo) => {
+  const multiRoot = outlineFile + '# B1\n## B11\n';
+  const fs = await setupTauriMocks(page, { initialFs: { [path]: multiRoot }, openFilePath: path });
+  await page.goto('/');
+  await expect(page.locator('.ProseMirror h1').first()).toHaveText('A1');
+  await page.waitForTimeout(400);
+
+  await page.locator('.heading-preview-btn').click();
+  const preview = page.getByTestId('heading-file-preview');
+  await expect(preview).toBeVisible();
+  await expect(page.locator('.heading-preview-btn')).toHaveClass(/active/);
+  // Two roots: hier-flow does not fit, so struct-flow is picked.
+  await expect(preview.getByTestId('heading-type-select')).toHaveValue('struct-flow');
+  await expect(preview.getByTestId('heading-file-diagram').locator('svg')).toContainText('B11');
+  // The descriptive first line is ignored with a warning, as heading2diagram.py does.
+  await preview.getByTestId('heading-file-warnings-toggle').click();
+  await expect(preview.getByTestId('heading-file-warnings')).toContainText('1行目: 見出し行でも空行でもない行を無視する');
+
+  // A type the input does not fit explains why.
+  await preview.getByTestId('heading-type-select').selectOption('hier-flow');
+  await expect(preview.getByTestId('heading-file-error')).toContainText('ルートがちょうど1個であること（ルートが2個ある）');
+
+  // Gallery: pick a type and an option by clicking.
+  await preview.getByTestId('heading-file-tab-gallery').click();
+  const gallery = preview.getByTestId('heading-gallery');
+  await expect(gallery.getByTestId('heading-gallery-type:struct-flow').locator('svg')).toContainText('A121');
+  await gallery.getByTestId('heading-gallery-type:struct-flow').click();
+  await expect(preview.getByTestId('heading-type-select')).toHaveValue('struct-flow');
+  await gallery.getByTestId('heading-gallery-option:layout:tight').dblclick();
+  await expect(preview.getByTestId('heading-option-layout')).toHaveValue('tight');
+  await expect(preview.getByTestId('heading-file-diagram').locator('svg')).toContainText('A121');
+  await page.screenshot({ path: testInfo.outputPath('heading-file-preview.png') });
+
+  // Editing the file text on the left redraws the diagram.
+  const code = page.locator('.split-editor-code .cm-content');
+  await code.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('## B12');
+  await expect(preview.getByTestId('heading-file-diagram').locator('svg')).toContainText('B12');
+
+  // Switch the pane back to Markdown and again to the diagram.
+  await page.getByTestId('split-preview-mode-markdown').click();
+  await expect(preview).toHaveCount(0);
+  await expect(page.locator('.split-editor-preview .ProseMirror h1').first()).toHaveText('A1');
+  await page.getByTestId('split-preview-mode-heading').click();
+  await expect(page.getByTestId('heading-file-preview').getByTestId('heading-option-layout')).toHaveValue('tight');
+
+  // Turning the preview off returns to the normal editor; the file on disk was never written.
+  await page.locator('.heading-preview-btn').click();
+  await expect(page.getByTestId('heading-file-preview')).toHaveCount(0);
+  await expect(page.locator('.split-editor-area')).toHaveCount(0);
+  expect(fs.getFs()[path]).toBe(multiRoot);
+
+  // The chosen type and options are remembered for the file.
+  await page.reload();
+  await expect(page.locator('.ProseMirror h1').first()).toHaveText('A1');
+  await page.locator('.heading-preview-btn').click();
+  await expect(page.getByTestId('heading-file-preview').getByTestId('heading-type-select')).toHaveValue('struct-flow');
+  await expect(page.getByTestId('heading-file-preview').getByTestId('heading-option-layout')).toHaveValue('tight');
+});

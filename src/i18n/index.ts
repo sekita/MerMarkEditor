@@ -140,6 +140,14 @@ export interface Translations {
   headingDiagramGalleryCurrent: string;
   headingDiagramGalleryEmpty: string;
   enterHeadingCode: string;
+  headingsToDiagram: string;
+  headingsToDiagramTooltip: string;
+  headingsToDiagramMenu: string;
+  headingPreview: string;
+  headingPreviewTooltip: string;
+  headingPreviewModeMarkdown: string;
+  headingPreviewModeDiagram: string;
+  headingPreviewFileNote: string;
 
   // Toolbar - Footnotes
   footnote: string;

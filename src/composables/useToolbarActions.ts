@@ -230,6 +230,15 @@ export function useToolbarActions(editorOverride?: Ref<Editor | null>) {
     runCommand((e) => (e.commands as any).insertHeadingDiagram());
   };
 
+  // Turn the selected headings (or the run around the cursor) into a heading-format diagram
+  const convertHeadingsToDiagram = () => {
+    runCommand((e) => (e.chain().focus() as any).convertHeadingsToDiagram().run());
+  };
+  const canConvertHeadingsToDiagram = (): boolean => {
+    const ed = editor?.value;
+    return !!ed && !!(ed.can() as any).convertHeadingsToDiagram?.();
+  };
+
   // Footnote — chain().focus() preserves selection after toolbar click steals focus
   const insertMath = (display = false) => {
     runCommand(e => display ? e.chain().focus().insertKatexBlock().run() : e.chain().focus().insertKatexInline().run());
@@ -293,6 +302,8 @@ export function useToolbarActions(editorOverride?: Ref<Editor | null>) {
     // Mermaid
     insertMermaid,
     insertHeadingDiagram,
+    convertHeadingsToDiagram,
+    canConvertHeadingsToDiagram,
     insertMath,
 
     // Footnote

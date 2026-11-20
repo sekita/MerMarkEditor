@@ -80,6 +80,8 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   { id: 'mermaid', category: 'mermaid', defaultZone: 'toolbar', defaultOrder: 800, needsEditor: true, labelKey: 'mermaid' },
   // Heading-format diagram (heading2diagram): `#` headings rendered as a Mermaid diagram
   { id: 'heading-diagram', category: 'mermaid', defaultZone: 'toolbar', defaultOrder: 810, needsEditor: true, labelKey: 'headingDiagram' },
+  // Convert the selected headings (or the run around the cursor) into a heading-format diagram
+  { id: 'headings-to-diagram', category: 'mermaid', defaultZone: 'toolbar', defaultOrder: 815, needsEditor: true, labelKey: 'headingsToDiagram' },
 
   // Footnote
   { id: 'footnote', category: 'footnote', defaultZone: 'toolbar', defaultOrder: 850, needsEditor: true, labelKey: 'footnote' },
@@ -100,6 +102,8 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   { id: 'toggle-code-view', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1110, needsEditor: false, labelKey: 'codeView' },
   { id: 'toggle-split-view', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1120, needsEditor: false, labelKey: 'splitView' },
   { id: 'toggle-split-editor', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1125, needsEditor: false, labelKey: 'splitEditor' },
+  // Whole-file heading preview (Code + Preview with the preview drawn by heading2diagram)
+  { id: 'heading-preview', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1126, needsEditor: false, labelKey: 'headingPreview' },
   { id: 'toggle-diff', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1130, needsEditor: false, labelKey: 'changes' },
   { id: 'compare-tabs', category: 'view-toggles', defaultZone: 'toolbar', defaultOrder: 1140, needsEditor: false, labelKey: 'compareTabs' },
 

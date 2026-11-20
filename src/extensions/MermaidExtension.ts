@@ -6,6 +6,7 @@ import {
   DEFAULT_HEADING_TYPE,
   isHeadingTypeId,
 } from "../utils/heading2diagram";
+import { applyHeadingsToDiagram } from "./heading-diagram/headingsToDiagram";
 
 export interface MermaidOptions {
   HTMLAttributes: Record<string, unknown>;
@@ -17,6 +18,8 @@ declare module "@tiptap/core" {
       insertMermaid: (code?: string) => ReturnType;
       /** Inserts a heading-format block (heading2diagram) rendered as a diagram. */
       insertHeadingDiagram: (code?: string, typeId?: string) => ReturnType;
+      /** Converts the selected headings (or the run around the cursor) into a heading-format diagram. */
+      convertHeadingsToDiagram: () => ReturnType;
     };
   }
 }
@@ -214,6 +217,14 @@ export const MermaidExtension = Node.create<MermaidOptions>({
               headingOptions: "",
             },
           });
+        },
+      convertHeadingsToDiagram:
+        () =>
+        ({ state, tr, dispatch }) => {
+          if (!dispatch) {
+            return applyHeadingsToDiagram(state, state.tr, this.name);
+          }
+          return applyHeadingsToDiagram(state, tr, this.name);
         },
     };
   },

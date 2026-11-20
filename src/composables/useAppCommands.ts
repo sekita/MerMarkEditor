@@ -26,6 +26,8 @@ export interface CommandContext {
   codeView: boolean; splitEditor: boolean; splitView: boolean; hasDocument: boolean;
   canDiff: boolean; canCompare: boolean; diff: boolean; toc: boolean; ai: boolean;
   marp: boolean; marpPreview: boolean; modal: boolean;
+  /** Whole-file heading preview is showing (Code + Preview as heading2diagram). */
+  headingPreview?: boolean;
 }
 export interface AppCommands {
   menus: Ref<CommandMenu[]>;
@@ -218,6 +220,7 @@ export function useAppCommands(options: {
         ]),
         edit('code-block', l.codeBlock, chain(e => { e.chain().focus().toggleCodeBlock().run(); })),
         edit('mermaid', tr.insertMermaid, a.insertMermaid), edit('heading-diagram', tr.insertHeadingDiagram, a.insertHeadingDiagram),
+        command('headings-to-diagram', tr.headingsToDiagramMenu, a.convertHeadingsToDiagram, visual && a.canConvertHeadingsToDiagram()),
         edit('footnote', tr.insertFootnote, a.insertFootnote),
         edit('math-inline', tr.mathInline, () => a.insertMath(false)), edit('math-block', tr.mathBlock, () => a.insertMath(true)),
         edit('horizontal-rule', l.horizontalRule, chain(e => { e.chain().focus().setHorizontalRule().run(); })),
@@ -237,6 +240,7 @@ export function useAppCommands(options: {
         command('toggle-code-view', tr.codeView, undefined, doc && !c.splitEditor, 'CmdOrCtrl+Shift+V', c.codeView),
         command('toggle-split-view', tr.splitView, undefined, visualDocument, undefined, c.splitView),
         command('toggle-split-editor', tr.splitEditor, undefined, doc && !c.splitView, undefined, c.splitEditor),
+        command('heading-preview', tr.headingPreview, undefined, doc && !c.splitView && !c.marp, undefined, !!c.headingPreview),
         command('toggle-diff', tr.changes, undefined, visualDocument && c.canDiff, 'CmdOrCtrl+Shift+D', c.diff),
         command('compare-tabs', tr.compareTabs, undefined, visualDocument && c.canCompare, 'CmdOrCtrl+Shift+C'),
         command('ai-toggle', tr.aiToggleTooltip, undefined, !c.modal, undefined, c.ai),

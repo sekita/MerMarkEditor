@@ -90,6 +90,10 @@ const {
   t,
 } = useToolbarActions();
 
+/** Checked state of the command behind a toolbar item (toggle buttons). */
+const isCommandChecked = (id: string): boolean =>
+  !!flattenCommands(commands?.menus.value ?? []).find(c => c.id === id)?.checked;
+
 const commandTooltip = (label: string) => {
   const command = flattenCommands(commands?.menus.value ?? []).find(c => c.id === props.itemId);
   if (!command) return label;
@@ -101,7 +105,7 @@ const needsEditor = (id: string) => {
   const editorItems = [
     'undo', 'redo', 'heading-select', 'bold', 'italic', 'strikethrough', 'inline-code',
     'bullet-list', 'ordered-list', 'task-list', 'blockquote', 'code-block', 'horizontal-rule',
-    'page-break', 'link', 'image', 'table', 'mermaid', 'heading-diagram', 'footnote', 'math-inline', 'math-block',
+    'page-break', 'link', 'image', 'table', 'mermaid', 'heading-diagram', 'headings-to-diagram', 'footnote', 'math-inline', 'math-block',
   ];
   return editorItems.includes(id);
 };
@@ -127,8 +131,8 @@ const showLabel = (id: string) => {
   // Items that always show labels (not icon-only)
   const labelItems = [
     'new-file', 'open-file', 'save-file', 'save-file-as', 'export-pdf',
-    'mermaid', 'heading-diagram', 'footnote', 'toggle-toc', 'toggle-code-view', 'toggle-split-view',
-    'toggle-split-editor', 'toggle-diff', 'compare-tabs',
+    'mermaid', 'heading-diagram', 'headings-to-diagram', 'footnote', 'toggle-toc', 'toggle-code-view', 'toggle-split-view',
+    'toggle-split-editor', 'heading-preview', 'toggle-diff', 'compare-tabs',
   ];
   return labelItems.includes(id);
 };
@@ -429,6 +433,21 @@ const showLabel = (id: string) => {
     <span v-if="showLabel(itemId)">{{ t.mermaid }}</span>
   </button>
 
+  <!-- Convert headings to a heading-format diagram -->
+  <button @mousedown.prevent v-else-if="itemId === 'headings-to-diagram'" @click="dispatch('headings-to-diagram', () => {})" class="toolbar-btn mermaid-btn headings-to-diagram-btn" :class="{ 'icon-only': !showLabel(itemId) }" v-tooltip="commandTooltip(t.headingsToDiagramTooltip)" :disabled="isDisabled(itemId)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="2" y1="6" x2="7" y2="6"/>
+      <line x1="4" y1="12" x2="7" y2="12"/>
+      <line x1="6" y1="18" x2="7" y2="18"/>
+      <polyline points="10 12 13 12"/>
+      <polyline points="11.5 10 13.5 12 11.5 14"/>
+      <rect x="16" y="4" width="6" height="4" rx="1"/>
+      <rect x="16" y="16" width="6" height="4" rx="1"/>
+      <path d="M19 8v8"/>
+    </svg>
+    <span v-if="showLabel(itemId)">{{ t.headingsToDiagram }}</span>
+  </button>
+
   <!-- Heading-format diagram (heading2diagram) -->
   <button @mousedown.prevent v-else-if="itemId === 'heading-diagram'" @click="dispatch('heading-diagram', insertHeadingDiagram)" class="toolbar-btn mermaid-btn heading-diagram-btn" :class="{ 'icon-only': !showLabel(itemId) }" v-tooltip="commandTooltip(t.insertHeadingDiagram)" :disabled="isDisabled(itemId)">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -567,6 +586,20 @@ const showLabel = (id: string) => {
       <line x1="12" y1="3" x2="12" y2="21"/>
     </svg>
     <span v-if="showLabel(itemId)">{{ isSplitActive ? t.singleView : t.splitView }}</span>
+  </button>
+
+  <!-- Whole-file heading preview -->
+  <button @mousedown.prevent v-else-if="itemId === 'heading-preview'" @click="dispatch('heading-preview', () => {})" :class="['toolbar-btn', 'heading-preview-btn', { active: isCommandChecked('heading-preview'), 'icon-only': !showLabel(itemId) }]" v-tooltip="commandTooltip(t.headingPreviewTooltip)" :disabled="isDisabled(itemId)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <rect x="2" y="3" width="20" height="18" rx="2"/>
+      <line x1="12" y1="3" x2="12" y2="21"/>
+      <line x1="5" y1="8" x2="9" y2="8"/>
+      <line x1="6" y1="12" x2="9" y2="12"/>
+      <line x1="7" y1="16" x2="9" y2="16"/>
+      <rect x="14.5" y="7" width="5" height="3" rx="0.5"/>
+      <rect x="14.5" y="14" width="5" height="3" rx="0.5"/>
+    </svg>
+    <span v-if="showLabel(itemId)">{{ t.headingPreview }}</span>
   </button>
 
   <button @mousedown.prevent v-else-if="itemId === 'toggle-split-editor'" @click="dispatch('toggle-split-editor', () => emit('toggleSplitEditor'))" :class="['toolbar-btn', 'split-editor-toggle-btn', { active: splitEditorActive, 'icon-only': !showLabel(itemId) }]" v-tooltip="commandTooltip(splitEditorActive ? t.splitEditorExit : t.splitEditorTooltip)" :disabled="isDisabled(itemId)">
@@ -719,10 +752,10 @@ const showLabel = (id: string) => {
 .split-toggle-btn.active { background: var(--split-toggle-active-bg); border-color: var(--split-toggle-active-border); color: white; }
 .split-toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.split-editor-toggle-btn { background: var(--split-toggle-bg); border-color: var(--split-toggle-border); color: var(--split-toggle-color); }
-.split-editor-toggle-btn:hover:not(:disabled) { background: var(--split-toggle-hover-bg); border-color: var(--split-toggle-hover-border); }
-.split-editor-toggle-btn.active { background: var(--split-toggle-active-bg); border-color: var(--split-toggle-active-border); color: white; }
-.split-editor-toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.split-editor-toggle-btn, .heading-preview-btn { background: var(--split-toggle-bg); border-color: var(--split-toggle-border); color: var(--split-toggle-color); }
+.split-editor-toggle-btn:hover:not(:disabled), .heading-preview-btn:hover:not(:disabled) { background: var(--split-toggle-hover-bg); border-color: var(--split-toggle-hover-border); }
+.split-editor-toggle-btn.active, .heading-preview-btn.active { background: var(--split-toggle-active-bg); border-color: var(--split-toggle-active-border); color: white; }
+.split-editor-toggle-btn:disabled, .heading-preview-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .changes-toggle-btn { background: var(--changes-toggle-bg); border-color: var(--changes-toggle-border); color: var(--changes-toggle-color); }
 .changes-toggle-btn:hover:not(:disabled) { background: var(--changes-toggle-hover-bg); border-color: var(--changes-toggle-hover-border); }

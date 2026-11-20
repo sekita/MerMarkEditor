@@ -131,6 +131,14 @@ const de: Translations = {
   headingDiagramGalleryCurrent: 'aktuell',
   headingDiagramGalleryEmpty: 'Kein Diagrammtyp kann diesen Text darstellen.',
   enterHeadingCode: '# Wurzel\n## Kind\n### Enkel',
+  headingsToDiagram: 'Zu Diagramm',
+  headingsToDiagramTooltip: 'Ausgewählte Überschriften (oder die Überschriften um den Cursor) in ein Überschriften-Diagramm umwandeln',
+  headingsToDiagramMenu: 'Überschriften in Diagramm umwandeln',
+  headingPreview: 'Überschriften-Vorschau',
+  headingPreviewTooltip: 'Ganze Datei als Überschriften-Diagramm anzeigen (die Datei wird nicht geändert)',
+  headingPreviewModeMarkdown: 'Markdown',
+  headingPreviewModeDiagram: 'Überschriften-Diagramm',
+  headingPreviewFileNote: 'Die ganze Datei wird als heading2diagram-Eingabe gelesen. Die Datei wird nicht geändert.',
 
   // Toolbar - Footnotes
   footnote: 'Fußnote',

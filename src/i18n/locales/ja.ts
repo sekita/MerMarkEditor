@@ -131,6 +131,14 @@ const ja: Translations = {
   headingDiagramGalleryCurrent: '現在',
   headingDiagramGalleryEmpty: 'この入力から生成できる図種がありません。',
   enterHeadingCode: '# ルート\n## 子\n### 孫',
+  headingsToDiagram: '見出し→図',
+  headingsToDiagramTooltip: '選択した見出し（またはカーソル位置の連続した見出し）を見出し形式の図に変換',
+  headingsToDiagramMenu: '見出しを図に変換',
+  headingPreview: '見出し図プレビュー',
+  headingPreviewTooltip: 'ファイル全体を見出し形式として図でプレビュー（ファイルは変更しません）',
+  headingPreviewModeMarkdown: 'Markdown',
+  headingPreviewModeDiagram: '見出し図',
+  headingPreviewFileNote: 'ファイル全体を heading2diagram の入力として変換しています。ファイルは変更されません。',
 
   // Toolbar - Footnotes
   footnote: '脚注',
