@@ -9,6 +9,21 @@ import { useFullscreen } from "../composables/useFullscreen";
 import { quickAccessTemplates } from "../data/diagramTemplates";
 import DiagramTemplateModal from "./DiagramTemplateModal.vue";
 import { useAiMermaidTarget } from "../composables/useAiMermaidTarget";
+import {
+  buildHeadingOptionString,
+  convertHeadingBlock,
+  defaultHeadingOptions,
+  headingSampleFor,
+  meaningfulOptions,
+  mermaidHeadingTypeIds,
+  optionChoices,
+  parseHeadingInfo,
+  plantumlTypeIds,
+  typeIdList,
+  validHeadingTypes,
+  type ExplicitHeadingOptions,
+  type HeadingOptionName,
+} from "../utils/heading2diagram";
 
 let elkLayoutLoadersRegistered = false;
 
@@ -27,6 +42,10 @@ const props = defineProps<{
       printScale: number;
       userWidth: number | null;
       splitRatio: number;
+      /** Heading-format mode (heading2diagram): diagram type id, or null for plain Mermaid. */
+      headingType?: string | null;
+      /** CLI-style options for heading-format mode (`--direction LR ...`). */
+      headingOptions?: string;
     };
   };
   updateAttributes: (attrs: Record<string, unknown>) => void;
@@ -137,6 +156,9 @@ const aiPreviewCode = computed<string | null>(() =>
 );
 
 function requestAiEdit() {
+  // The AI bridge exchanges Mermaid source; a heading-format block holds
+  // heading text instead, so it is edited by hand.
+  if (isHeadingMode.value) return;
   // Make sure the editing surface is open so the user can iterate alongside.
   if (!isEditing.value) {
     startEdit();
@@ -166,6 +188,58 @@ const error = ref<string | null>(null);
 const previewError = ref<string | null>(null);
 const showTemplateModal = ref(false);
 const isDark = ref(document.documentElement.classList.contains("dark"));
+
+// ===== Heading-format mode (heading2diagram) =====
+// When `headingType` is set, `code` holds heading-format text (`# A`, `## B`…)
+// which is converted to Mermaid right before rendering. The document keeps
+// the heading text; the generated Mermaid is never written to disk.
+const isHeadingMode = computed(() => !!props.node.attrs.headingType);
+/** Warnings from the last conversion of the saved source (shown on the badge). */
+const headingWarnings = ref<string[]>([]);
+/** Generated non-Mermaid (PlantUML) code, shown as text because it cannot be rendered. */
+const generatedCodeText = ref<string | null>(null);
+
+// Editing state: `editHeadingType === null` means the editor holds plain Mermaid.
+const editHeadingType = ref<string | null>(props.node.attrs.headingType ?? null);
+const editHeadingOptions = ref<ExplicitHeadingOptions>({});
+const isEditHeading = computed(() => editHeadingType.value !== null);
+const previewWarnings = ref<string[]>([]);
+const previewGeneratedCode = ref("");
+const previewLanguage = ref<"mermaid" | "plantuml">("mermaid");
+const showGeneratedCode = ref(false);
+/** The preview pane shows text instead of a diagram (toggle, or PlantUML output). */
+const showPreviewCode = computed(
+  () => isEditHeading.value && (showGeneratedCode.value || previewLanguage.value !== "mermaid"),
+);
+const editOptionNames = computed<readonly HeadingOptionName[]>(() =>
+  editHeadingType.value ? meaningfulOptions[editHeadingType.value] ?? [] : [],
+);
+const plantumlHeadingTypeIds = typeIdList.filter((id) => plantumlTypeIds.has(id));
+
+const editOptionValue = (name: HeadingOptionName): string =>
+  editHeadingOptions.value[name] ?? defaultHeadingOptions[name];
+
+const setEditOption = (name: HeadingOptionName, value: string) => {
+  const next = { ...editHeadingOptions.value };
+  if (value === defaultHeadingOptions[name]) delete next[name];
+  else next[name] = value;
+  editHeadingOptions.value = next;
+};
+
+const insertHeadingSample = () => {
+  if (editHeadingType.value) editCode.value = headingSampleFor(editHeadingType.value);
+};
+
+/** Swap the heading text for the Mermaid it generates, for manual fine-tuning.
+ *  Nothing is stored until the user presses Save. */
+const convertEditToMermaid = () => {
+  if (!editHeadingType.value) return;
+  const conversion = convertHeadingBlock(editCode.value, editHeadingType.value, editHeadingOptions.value);
+  if (!conversion.ok || conversion.language !== "mermaid") return;
+  editCode.value = conversion.code;
+  editHeadingType.value = null;
+  showGeneratedCode.value = false;
+};
 
 // Live preview rendering (debounced)
 let previewTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -310,7 +384,23 @@ const renderPreview = async () => {
     const id = `mermaid-preview-${Date.now()}`;
     // When the AI proposed a candidate, render that instead of the user's
     // in-progress edits so they can review before clicking Apply.
-    const sourceForPreview = aiPreviewCode.value ?? editCode.value;
+    let sourceForPreview = aiPreviewCode.value ?? editCode.value;
+    if (isEditHeading.value) {
+      const conversion = convertHeadingBlock(editCode.value, editHeadingType.value, editHeadingOptions.value);
+      previewWarnings.value = conversion.warnings;
+      previewGeneratedCode.value = conversion.code;
+      previewLanguage.value = conversion.language;
+      if (!conversion.ok) throw new Error(conversion.error ?? t.value.diagramError);
+      if (conversion.language !== "mermaid") {
+        // PlantUML output: nothing to draw, the pane shows the generated code.
+        previewContainerRef.value.innerHTML = "";
+        return;
+      }
+      sourceForPreview = conversion.code;
+    } else {
+      previewWarnings.value = [];
+      previewLanguage.value = "mermaid";
+    }
     const codeForRender = sourceForPreview
       .replace(/__BR__/g, '<br/>')
       .replace(/\\n/g, '<br/>');
@@ -484,7 +574,25 @@ const renderMermaid = async () => {
     // Convert placeholder back to <br> for mermaid rendering. When an AI
     // preview is active we render that instead so the user sees the proposed
     // change in place — the saved attr stays untouched until Apply.
-    const sourceCode = aiPreviewCode.value ?? props.node.attrs.code;
+    let sourceCode = aiPreviewCode.value ?? props.node.attrs.code;
+    if (isHeadingMode.value) {
+      const conversion = convertHeadingBlock(
+        props.node.attrs.code,
+        props.node.attrs.headingType,
+        props.node.attrs.headingOptions,
+      );
+      headingWarnings.value = conversion.warnings;
+      if (!conversion.ok) throw new Error(conversion.error ?? t.value.diagramError);
+      if (conversion.language !== "mermaid") {
+        generatedCodeText.value = conversion.code;
+        containerRef.value.innerHTML = "";
+        return;
+      }
+      sourceCode = conversion.code;
+    } else {
+      headingWarnings.value = [];
+    }
+    generatedCodeText.value = null;
     const codeForRender = sourceCode
       .replace(/__BR__/g, '<br/>')
       .replace(/\\n/g, '<br/>');
@@ -497,6 +605,7 @@ const renderMermaid = async () => {
     if (isDark.value) repaintMermaidDark(containerRef.value);
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : t.value.diagramError;
+    generatedCodeText.value = null;
     if (containerRef.value) containerRef.value.innerHTML = "";
   }
 };
@@ -640,7 +749,7 @@ onUnmounted(() => {
 });
 
 watch(
-  () => props.node.attrs.code,
+  () => [props.node.attrs.code, props.node.attrs.headingType, props.node.attrs.headingOptions],
   () => {
     renderMermaid();
   }
@@ -663,24 +772,51 @@ watch(
   }
 );
 
+/** Loads the saved node state into the editing refs. */
+const resetEditState = () => {
+  const headingType = props.node.attrs.headingType ?? null;
+  editHeadingType.value = headingType;
+  showGeneratedCode.value = false;
+  if (headingType) {
+    // Heading text is stored verbatim.
+    editCode.value = props.node.attrs.code;
+    editHeadingOptions.value = parseHeadingInfo(`${headingType} ${props.node.attrs.headingOptions ?? ""}`).options;
+  } else {
+    // Show <br> tags to user during editing (convert placeholder to actual syntax)
+    editCode.value = props.node.attrs.code.replace(/__BR__/g, '<br/>');
+    editHeadingOptions.value = {};
+  }
+};
+
 const startEdit = () => {
-  // Show <br> tags to user during editing (convert placeholder to actual syntax)
-  editCode.value = props.node.attrs.code.replace(/__BR__/g, '<br/>');
+  resetEditState();
   isEditing.value = true;
   // Render initial preview after DOM updates
   nextTick(() => renderPreview());
 };
 
 const saveEdit = () => {
-  // Convert <br> tags back to placeholder for safe storage
-  const safeCode = editCode.value.replace(/<br\s*\/?>/gi, '__BR__');
-  props.updateAttributes({ code: safeCode });
+  if (editHeadingType.value) {
+    props.updateAttributes({
+      code: editCode.value.replace(/\s+$/, ''),
+      headingType: editHeadingType.value,
+      headingOptions: buildHeadingOptionString(editHeadingType.value, editHeadingOptions.value),
+    });
+  } else {
+    // Convert <br> tags back to placeholder for safe storage
+    const safeCode = editCode.value.replace(/<br\s*\/?>/gi, '__BR__');
+    props.updateAttributes(
+      isHeadingMode.value
+        ? { code: safeCode, headingType: null, headingOptions: "" } // converted to plain Mermaid
+        : { code: safeCode },
+    );
+  }
   isEditing.value = false;
 };
 
 const cancelEdit = () => {
-  // Reset to original code (with <br> tags for display)
-  editCode.value = props.node.attrs.code.replace(/__BR__/g, '<br/>');
+  // Reset to the saved state
+  resetEditState();
   isEditing.value = false;
 };
 
@@ -699,6 +835,21 @@ watch(editCode, () => {
   }
 });
 
+// Heading-format mode: type / option changes redraw immediately.
+watch([editHeadingType, editHeadingOptions], () => {
+  if (isEditing.value) {
+    if (previewTimeout) clearTimeout(previewTimeout);
+    renderPreview();
+  }
+});
+
+/** Types the text being edited can be drawn as; the rest are marked in the picker. */
+const applicableHeadingTypes = computed(
+  () => new Set(isEditing.value && isEditHeading.value ? validHeadingTypes(editCode.value) : []),
+);
+const headingTypeLabel = (typeId: string): string =>
+  applicableHeadingTypes.value.has(typeId) ? typeId : `${typeId} (${t.value.headingDiagramNotApplicable})`;
+
 // Re-render the in-edit preview pane whenever the AI proposes (or revokes) a
 // candidate so the user sees the proposal immediately while still editing.
 watch(aiPreviewCode, () => {
@@ -714,8 +865,18 @@ watch(aiPreviewCode, () => {
     class="mermaid-wrapper"
     :class="{ selected: props.selected, resizing: isResizing, 'has-user-width': !!userWidth }"
     :data-code="encodeURIComponent(props.node.attrs.code)"
+    :data-heading-type="props.node.attrs.headingType || undefined"
     :style="wrapperStyle"
   >
+    <!-- Heading-format block: type badge (+ warning count) so it can be told
+         apart from a plain Mermaid diagram. -->
+    <span
+      v-if="isHeadingMode && !isEditing"
+      class="heading-diagram-badge"
+      :class="{ 'has-warnings': headingWarnings.length > 0 }"
+      :title="headingWarnings.join('\n') || t.headingDiagram"
+    >{{ props.node.attrs.headingType }}<template v-if="headingWarnings.length"> ⚠ {{ headingWarnings.length }}</template></span>
+
     <!-- Compact floating toolbar — appears on hover or when selected.
          Replaces the previous full-width header + standalone zoom row that
          dwarfed the diagram itself. -->
@@ -757,6 +918,7 @@ watch(aiPreviewCode, () => {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
       </button>
       <button
+        v-if="!isHeadingMode"
         class="mermaid-toolbar-btn"
         :class="{ active: aiTargetActive }"
         :title="t.aiAssistMermaidTitle"
@@ -798,8 +960,44 @@ watch(aiPreviewCode, () => {
         />
         <!-- Top bar -->
         <div class="editor-topbar">
-          <span class="editor-topbar-title">Mermaid Editor</span>
-          <div class="editor-topbar-templates">
+          <span class="editor-topbar-title">{{ isEditHeading ? t.headingDiagramEditor : 'Mermaid Editor' }}</span>
+          <!-- Heading-format mode: diagram type + the options that apply to it -->
+          <div v-if="isEditHeading" class="editor-topbar-templates heading-controls">
+            <label class="heading-control">
+              <span>{{ t.headingDiagramType }}</span>
+              <select v-model="editHeadingType" class="heading-select" data-testid="heading-type-select">
+                <optgroup label="Mermaid">
+                  <option v-for="id in mermaidHeadingTypeIds" :key="id" :value="id">{{ headingTypeLabel(id) }}</option>
+                </optgroup>
+                <optgroup label="PlantUML">
+                  <option v-for="id in plantumlHeadingTypeIds" :key="id" :value="id">{{ headingTypeLabel(id) }}</option>
+                </optgroup>
+              </select>
+            </label>
+            <label v-for="name in editOptionNames" :key="name" class="heading-control">
+              <span>{{ name }}</span>
+              <select
+                class="heading-select"
+                :value="editOptionValue(name)"
+                :data-testid="`heading-option-${name}`"
+                @change="setEditOption(name, ($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="choice in optionChoices[name]" :key="choice" :value="choice">{{ choice }}</option>
+              </select>
+            </label>
+            <button class="btn-template" :title="t.headingDiagramSampleHint" @click="insertHeadingSample">
+              {{ t.headingDiagramSample }}
+            </button>
+            <button
+              class="btn-template"
+              :title="t.headingDiagramToMermaidHint"
+              :disabled="previewLanguage !== 'mermaid' || !!previewError"
+              @click="convertEditToMermaid"
+            >
+              {{ t.headingDiagramToMermaid }}
+            </button>
+          </div>
+          <div v-else class="editor-topbar-templates">
             <button
               v-for="tmpl in quickAccessTemplates"
               :key="tmpl.name"
@@ -814,6 +1012,7 @@ watch(aiPreviewCode, () => {
           </div>
           <div class="editor-topbar-actions">
             <button
+              v-if="!isHeadingMode && !isEditHeading"
               class="btn-ai-toggle"
               :class="{ active: aiTargetActive }"
               :title="t.aiAssistMermaidTitle"
@@ -839,14 +1038,21 @@ watch(aiPreviewCode, () => {
         </div>
         <!-- Split: code left, preview right -->
         <div class="editor-split-fullscreen">
-          <div class="editor-code-pane" :style="{ flex: `0 0 ${splitRatio}%` }">
+          <div class="editor-code-pane" :class="{ 'heading-mode': isEditHeading }" :style="{ flex: `0 0 ${splitRatio}%` }">
             <textarea
               id="mermaid-editor-textarea"
               v-model="editCode"
               class="mermaid-textarea"
-              :placeholder="t.enterMermaidCode"
+              :placeholder="isEditHeading ? t.enterHeadingCode : t.enterMermaidCode"
+              spellcheck="false"
               @keydown="handleTextareaKeydown"
             ></textarea>
+            <div v-if="isEditHeading && previewWarnings.length" class="heading-warnings" data-testid="heading-warnings">
+              <div class="heading-warnings-title">⚠ {{ t.headingDiagramWarnings }} ({{ previewWarnings.length }})</div>
+              <ul>
+                <li v-for="(warning, index) in previewWarnings" :key="index">{{ warning }}</li>
+              </ul>
+            </div>
           </div>
           <div class="split-divider-mermaid" @mousedown="startSplitDrag">
             <div class="divider-handle-mermaid"></div>
@@ -858,9 +1064,23 @@ watch(aiPreviewCode, () => {
               <button @click="previewZoomIn" class="btn-zoom" :title="t.zoomIn">+</button>
               <button @click="previewResetZoom" class="btn-zoom-text">{{ t.reset }}</button>
               <button @click="handlePreviewFitToView" class="btn-zoom-text">{{ t.fit }}</button>
-              <div v-if="previewError" class="preview-error-inline">{{ previewError }}</div>
+              <button
+                v-if="isEditHeading"
+                class="btn-zoom-text"
+                :class="{ active: showPreviewCode }"
+                :disabled="previewLanguage !== 'mermaid'"
+                @click="showGeneratedCode = !showGeneratedCode"
+              >{{ t.headingDiagramGeneratedCode }}</button>
+              <div v-if="previewError" class="preview-error-inline" :title="previewError">{{ previewError }}</div>
+            </div>
+            <!-- Input-condition errors need the full text, not the one-line toolbar slot. -->
+            <div v-if="isEditHeading && previewError" class="mermaid-error heading-preview-error" data-testid="heading-error">{{ previewError }}</div>
+            <div v-if="showPreviewCode && !previewError" class="heading-generated-pane">
+              <div v-if="previewLanguage !== 'mermaid'" class="heading-generated-note">{{ t.headingDiagramPlantumlNote }}</div>
+              <pre class="heading-generated-code" data-testid="heading-generated-code">{{ previewGeneratedCode }}</pre>
             </div>
             <div
+              v-show="!showPreviewCode || !!previewError"
               ref="previewViewportRef"
               class="editor-preview-viewport"
               @mousedown="previewStartPan"
@@ -884,11 +1104,17 @@ watch(aiPreviewCode, () => {
       {{ error }}
     </div>
 
+    <!-- Heading-format block whose type generates PlantUML: show the code. -->
+    <div v-if="generatedCodeText !== null && !isEditing" class="heading-generated-block">
+      <div class="heading-generated-note">{{ t.headingDiagramPlantumlNote }}</div>
+      <pre class="heading-generated-code">{{ generatedCodeText }}</pre>
+    </div>
+
     <!-- Viewport with pan/zoom -->
     <div
       ref="viewportRef"
       class="mermaid-viewport"
-      :class="{ hidden: isEditing }"
+      :class="{ hidden: isEditing || generatedCodeText !== null }"
       @mouseenter="handleViewportMouseEnter"
       @mousedown="startPan"
       @mousemove="doPan"
@@ -1581,6 +1807,135 @@ watch(aiPreviewCode, () => {
 
 .mermaid-viewport.hidden {
   display: none;
+}
+
+/* ===== Heading-format mode (heading2diagram) ===== */
+.heading-diagram-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 4;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-family: "Fira Code", "Consolas", monospace;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: default;
+  user-select: none;
+}
+
+.mermaid-wrapper:hover .heading-diagram-badge,
+.mermaid-wrapper.selected .heading-diagram-badge,
+.heading-diagram-badge.has-warnings {
+  opacity: 1;
+}
+
+.heading-diagram-badge.has-warnings {
+  color: var(--warning-color, #b45309);
+  border-color: var(--warning-color, #b45309);
+}
+
+.heading-generated-block {
+  padding: 28px 16px 12px;
+}
+
+.heading-generated-note {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.heading-generated-code {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  font-family: "Fira Code", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  user-select: text;
+}
+
+.heading-preview-error {
+  margin: 12px;
+  white-space: pre-wrap;
+}
+
+.heading-generated-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.heading-controls {
+  align-items: center;
+  gap: 10px;
+}
+
+.heading-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.heading-select {
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+}
+
+.heading-controls .btn-template:disabled,
+.btn-zoom-text:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-zoom-text.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.editor-code-pane.heading-mode {
+  flex-direction: column;
+}
+
+.editor-code-pane.heading-mode .mermaid-textarea {
+  min-height: 0;
+}
+
+.heading-warnings {
+  flex-shrink: 0;
+  max-height: 30%;
+  overflow: auto;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--warning-color, #b45309);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+}
+
+.heading-warnings-title {
+  font-weight: 600;
+}
+
+.heading-warnings ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
 }
 
 .mermaid-content {

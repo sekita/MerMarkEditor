@@ -291,6 +291,15 @@ function inlineMermaidSvgs(clone: HTMLElement): void {
       normalizeMermaidColors(svgClone);
       injectPrintLightOverride(svgClone);
       figure.appendChild(svgClone);
+    } else {
+      // Heading-format block whose type generates PlantUML: there is no SVG,
+      // so print the generated code the node shows on screen.
+      const generated = node.querySelector('.heading-generated-code');
+      if (generated?.textContent) {
+        const pre = document.createElement('pre');
+        pre.textContent = generated.textContent;
+        figure.appendChild(pre);
+      }
     }
     node.replaceWith(figure);
   }

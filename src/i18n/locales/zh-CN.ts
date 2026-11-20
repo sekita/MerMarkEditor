@@ -110,6 +110,21 @@ const zhCN: Translations = {
   mermaid: 'Mermaid',
   insertMermaid: '插入 Mermaid 图表',
 
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: '标题图',
+  insertHeadingDiagram: '插入标题格式图表',
+  headingDiagramEditor: '标题格式编辑器',
+  headingDiagramType: '图表类型',
+  headingDiagramNotApplicable: '输入不符合条件',
+  headingDiagramSample: '示例',
+  headingDiagramSampleHint: '用所选类型的示例替换文本',
+  headingDiagramGeneratedCode: '生成的代码',
+  headingDiagramToMermaid: '转换为 Mermaid',
+  headingDiagramToMermaidHint: '将标题文本替换为生成的 Mermaid 代码，以便手动微调',
+  headingDiagramPlantumlNote: '此类型生成 PlantUML，无法在此预览，改为显示生成的代码。',
+  headingDiagramWarnings: '警告',
+  enterHeadingCode: '# 根\n## 子\n### 孙',
+
   // Toolbar - Footnotes
   footnote: '脚注',
   insertFootnote: '插入脚注',

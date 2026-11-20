@@ -110,6 +110,21 @@ const ja: Translations = {
   mermaid: 'Mermaid',
   insertMermaid: 'Mermaid 図を挿入',
 
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: '見出し図',
+  insertHeadingDiagram: '見出し形式の図を挿入',
+  headingDiagramEditor: '見出し形式エディター',
+  headingDiagramType: '図種',
+  headingDiagramNotApplicable: '入力条件に不適合',
+  headingDiagramSample: 'サンプル',
+  headingDiagramSampleHint: '選択中の図種のサンプルでテキストを置き換えます',
+  headingDiagramGeneratedCode: '生成コード',
+  headingDiagramToMermaid: 'Mermaid に変換',
+  headingDiagramToMermaidHint: '見出しテキストを生成された Mermaid コードに置き換え、手作業で調整できるようにします',
+  headingDiagramPlantumlNote: 'この図種は PlantUML を生成するため、ここではプレビューできません。生成されたコードを表示します。',
+  headingDiagramWarnings: '警告',
+  enterHeadingCode: '# ルート\n## 子\n### 孫',
+
   // Toolbar - Footnotes
   footnote: '脚注',
   insertFootnote: '脚注を挿入',

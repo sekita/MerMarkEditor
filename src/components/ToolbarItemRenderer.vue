@@ -84,6 +84,7 @@ const {
   insertImageFromFile,
   showTokenMenu,
   insertMermaid,
+  insertHeadingDiagram,
   insertFootnote,
   editor,
   t,
@@ -100,7 +101,7 @@ const needsEditor = (id: string) => {
   const editorItems = [
     'undo', 'redo', 'heading-select', 'bold', 'italic', 'strikethrough', 'inline-code',
     'bullet-list', 'ordered-list', 'task-list', 'blockquote', 'code-block', 'horizontal-rule',
-    'page-break', 'link', 'image', 'table', 'mermaid', 'footnote', 'math-inline', 'math-block',
+    'page-break', 'link', 'image', 'table', 'mermaid', 'heading-diagram', 'footnote', 'math-inline', 'math-block',
   ];
   return editorItems.includes(id);
 };
@@ -126,7 +127,7 @@ const showLabel = (id: string) => {
   // Items that always show labels (not icon-only)
   const labelItems = [
     'new-file', 'open-file', 'save-file', 'save-file-as', 'export-pdf',
-    'mermaid', 'footnote', 'toggle-toc', 'toggle-code-view', 'toggle-split-view',
+    'mermaid', 'heading-diagram', 'footnote', 'toggle-toc', 'toggle-code-view', 'toggle-split-view',
     'toggle-split-editor', 'toggle-diff', 'compare-tabs',
   ];
   return labelItems.includes(id);
@@ -426,6 +427,19 @@ const showLabel = (id: string) => {
       <line x1="12" y1="12" x2="12" y2="15"/>
     </svg>
     <span v-if="showLabel(itemId)">{{ t.mermaid }}</span>
+  </button>
+
+  <!-- Heading-format diagram (heading2diagram) -->
+  <button @mousedown.prevent v-else-if="itemId === 'heading-diagram'" @click="dispatch('heading-diagram', insertHeadingDiagram)" class="toolbar-btn mermaid-btn heading-diagram-btn" :class="{ 'icon-only': !showLabel(itemId) }" v-tooltip="commandTooltip(t.insertHeadingDiagram)" :disabled="isDisabled(itemId)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <line x1="3" y1="5" x2="11" y2="5"/>
+      <line x1="6" y1="12" x2="11" y2="12"/>
+      <line x1="9" y1="19" x2="11" y2="19"/>
+      <rect x="15" y="3" width="6" height="4" rx="1"/>
+      <rect x="15" y="10" width="6" height="4" rx="1"/>
+      <rect x="15" y="17" width="6" height="4" rx="1"/>
+    </svg>
+    <span v-if="showLabel(itemId)">{{ t.headingDiagram }}</span>
   </button>
 
   <!-- Footnote -->

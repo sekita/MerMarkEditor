@@ -1,6 +1,11 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { VueNodeViewRenderer } from "@tiptap/vue-3";
 import MermaidNode from "../components/MermaidNode.vue";
+import {
+  DEFAULT_HEADING_SOURCE,
+  DEFAULT_HEADING_TYPE,
+  isHeadingTypeId,
+} from "../utils/heading2diagram";
 
 export interface MermaidOptions {
   HTMLAttributes: Record<string, unknown>;
@@ -10,6 +15,8 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     mermaid: {
       insertMermaid: (code?: string) => ReturnType;
+      /** Inserts a heading-format block (heading2diagram) rendered as a diagram. */
+      insertHeadingDiagram: (code?: string, typeId?: string) => ReturnType;
     };
   }
 }
@@ -84,6 +91,32 @@ export const MermaidExtension = Node.create<MermaidOptions>({
         },
       },
       /**
+       * Heading-format mode (heading2diagram). `null` = the node holds plain
+       * Mermaid source. Otherwise `code` holds heading-format text and this is
+       * the diagram type id (`hier-flow`, `pie`, ...) it is converted to before
+       * rendering. Saved as a ```heading2diagram fenced block.
+       */
+      headingType: {
+        default: null as string | null,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-heading-type");
+          return isHeadingTypeId(value) ? value : null;
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.headingType) return {};
+          return { "data-heading-type": String(attributes.headingType) };
+        },
+      },
+      /** CLI-style options for heading-format mode, e.g. `--direction LR`. */
+      headingOptions: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-heading-options") || "",
+        renderHTML: (attributes) => {
+          if (!attributes.headingType || !attributes.headingOptions) return {};
+          return { "data-heading-options": String(attributes.headingOptions) };
+        },
+      },
+      /**
        * Code-vs-preview split ratio (%) for the fullscreen editor. Default 50.
        * Persisted so reopening a file remembers the user's preferred split.
        * Clamped to 20–80 % both at load and at drag time.
@@ -132,6 +165,13 @@ export const MermaidExtension = Node.create<MermaidOptions>({
             const n = parseFloat(dataSplit);
             if (Number.isFinite(n)) result.splitRatio = Math.max(20, Math.min(80, Math.round(n)));
           }
+          const headingType = dom.getAttribute("data-heading-type");
+          if (isHeadingTypeId(headingType)) {
+            result.headingType = headingType;
+            result.headingOptions = dom.getAttribute("data-heading-options") || "";
+            // An empty heading block is still a block worth keeping.
+            if (!dataCode) result.code = "";
+          }
           return result;
         },
       },
@@ -160,6 +200,18 @@ export const MermaidExtension = Node.create<MermaidOptions>({
             type: this.name,
             attrs: {
               code: code || "graph LR\n  A[Start] --> B[End]",
+            },
+          });
+        },
+      insertHeadingDiagram:
+        (code?: string, typeId?: string) =>
+        ({ commands }) => {
+          return commands.insertContent({
+            type: this.name,
+            attrs: {
+              code: code || DEFAULT_HEADING_SOURCE,
+              headingType: isHeadingTypeId(typeId) ? typeId : DEFAULT_HEADING_TYPE,
+              headingOptions: "",
             },
           });
         },

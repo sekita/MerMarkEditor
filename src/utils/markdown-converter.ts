@@ -31,6 +31,7 @@ import {
   getCurrentMermaidWriteFormat,
   type MermaidFormat,
 } from './mermaid-formats';
+import { HEADING_FENCE_LANGUAGE, buildHeadingInfo, isHeadingTypeId, parseHeadingInfo } from './heading2diagram';
 import {
   parseMarkdownLists,
   convertMarkdownTables,
@@ -148,8 +149,10 @@ export function htmlToMarkdown(
   // `markdownToHtml` parser reads it back into `data-*` attributes so node
   // attrs survive a save/reload round trip.
   md = md.replace(/<div[^>]*data-type=["']mermaid["'][^>]*>[\s\S]*?<\/div>/gi, (match) => {
-    const code = extractMermaidCode(match);
-    if (code) {
+    const headingType = match.match(/data-heading-type=["']([\w-]+)["']/i)?.[1];
+    const isHeading = isHeadingTypeId(headingType);
+    const code = extractMermaidCode(match) ?? (isHeading ? '' : null);
+    if (code || isHeading) {
       const placeholder = `__PROTECTED_BLOCK_${protectedBlocks.length}__`;
       const attrPairs: string[] = [];
       const userWidthMatch = match.match(/data-user-width=["']?(\d+)["']?/i);
@@ -165,7 +168,18 @@ export function htmlToMarkdown(
         attrPairs.push(`splitRatio=${splitRatioMatch[1]}`);
       }
       const attrComment = attrPairs.length ? `<!--mermaid-attrs:${attrPairs.join(',')}-->\n` : '';
-      protectedBlocks.push(`\n${attrComment}${buildMermaidBlockFor(code, writeFormat)}\n`);
+      if (isHeading) {
+        // Heading-format block: written back as heading text, never as the
+        // generated Mermaid, so the document keeps its editable source.
+        const optionString = match.match(/data-heading-options=["']([^"']*)["']/i)?.[1] ?? '';
+        const info = buildHeadingInfo(headingType, parseHeadingInfo(`${headingType} ${optionString}`).options);
+        const source = code ?? '';
+        const longestRun = Math.max(2, ...Array.from(source.matchAll(/^ {0,3}(`{3,})/gm), m => m[1].length));
+        const fence = '`'.repeat(longestRun + 1);
+        protectedBlocks.push(`\n${attrComment}${fence}${HEADING_FENCE_LANGUAGE} ${info}\n${source}\n${fence}\n`);
+        return placeholder;
+      }
+      protectedBlocks.push(`\n${attrComment}${buildMermaidBlockFor(code ?? '', writeFormat)}\n`);
       return placeholder;
     }
     return '';

@@ -78,6 +78,8 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
 
   // Mermaid
   { id: 'mermaid', category: 'mermaid', defaultZone: 'toolbar', defaultOrder: 800, needsEditor: true, labelKey: 'mermaid' },
+  // Heading-format diagram (heading2diagram): `#` headings rendered as a Mermaid diagram
+  { id: 'heading-diagram', category: 'mermaid', defaultZone: 'toolbar', defaultOrder: 810, needsEditor: true, labelKey: 'headingDiagram' },
 
   // Footnote
   { id: 'footnote', category: 'footnote', defaultZone: 'toolbar', defaultOrder: 850, needsEditor: true, labelKey: 'footnote' },

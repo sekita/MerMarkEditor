@@ -225,6 +225,11 @@ export function useToolbarActions(editorOverride?: Ref<Editor | null>) {
     runCommand((e) => (e.commands as any).insertMermaid());
   };
 
+  // Heading-format diagram (heading2diagram)
+  const insertHeadingDiagram = () => {
+    runCommand((e) => (e.commands as any).insertHeadingDiagram());
+  };
+
   // Footnote — chain().focus() preserves selection after toolbar click steals focus
   const insertMath = (display = false) => {
     runCommand(e => display ? e.chain().focus().insertKatexBlock().run() : e.chain().focus().insertKatexInline().run());
@@ -287,6 +292,7 @@ export function useToolbarActions(editorOverride?: Ref<Editor | null>) {
 
     // Mermaid
     insertMermaid,
+    insertHeadingDiagram,
     insertMath,
 
     // Footnote

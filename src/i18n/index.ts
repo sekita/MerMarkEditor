@@ -119,6 +119,21 @@ export interface Translations {
   mermaid: string;
   insertMermaid: string;
 
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: string;
+  insertHeadingDiagram: string;
+  headingDiagramEditor: string;
+  headingDiagramType: string;
+  headingDiagramNotApplicable: string;
+  headingDiagramSample: string;
+  headingDiagramSampleHint: string;
+  headingDiagramGeneratedCode: string;
+  headingDiagramToMermaid: string;
+  headingDiagramToMermaidHint: string;
+  headingDiagramPlantumlNote: string;
+  headingDiagramWarnings: string;
+  enterHeadingCode: string;
+
   // Toolbar - Footnotes
   footnote: string;
   insertFootnote: string;

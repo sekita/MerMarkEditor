@@ -110,6 +110,21 @@ const en: Translations = {
   mermaid: 'Mermaid',
   insertMermaid: 'Insert Mermaid diagram',
 
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: 'Headings',
+  insertHeadingDiagram: 'Insert heading-format diagram',
+  headingDiagramEditor: 'Heading Diagram Editor',
+  headingDiagramType: 'Type',
+  headingDiagramNotApplicable: 'input does not fit',
+  headingDiagramSample: 'Sample',
+  headingDiagramSampleHint: 'Replace the text with a sample for the selected type',
+  headingDiagramGeneratedCode: 'Generated code',
+  headingDiagramToMermaid: 'Convert to Mermaid',
+  headingDiagramToMermaidHint: 'Replace the heading text with the generated Mermaid code to fine-tune it by hand',
+  headingDiagramPlantumlNote: 'This type generates PlantUML, which cannot be previewed here. The generated code is shown instead.',
+  headingDiagramWarnings: 'Warnings',
+  enterHeadingCode: '# Root\n## Child\n### Grandchild',
+
   // Toolbar - Footnotes
   footnote: 'Footnote',
   insertFootnote: 'Insert footnote',

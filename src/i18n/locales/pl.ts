@@ -110,6 +110,21 @@ const pl: Translations = {
   mermaid: 'Mermaid',
   insertMermaid: 'Wstaw diagram Mermaid',
 
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: 'Nagłówki',
+  insertHeadingDiagram: 'Wstaw diagram z nagłówków',
+  headingDiagramEditor: 'Edytor diagramu z nagłówków',
+  headingDiagramType: 'Typ',
+  headingDiagramNotApplicable: 'dane nie pasują',
+  headingDiagramSample: 'Przykład',
+  headingDiagramSampleHint: 'Zastąp tekst przykładem dla wybranego typu',
+  headingDiagramGeneratedCode: 'Wygenerowany kod',
+  headingDiagramToMermaid: 'Konwertuj na Mermaid',
+  headingDiagramToMermaidHint: 'Zastąp tekst nagłówków wygenerowanym kodem Mermaid, aby dopracować go ręcznie',
+  headingDiagramPlantumlNote: 'Ten typ generuje kod PlantUML, którego nie można tu wyświetlić. Zamiast tego pokazano wygenerowany kod.',
+  headingDiagramWarnings: 'Ostrzeżenia',
+  enterHeadingCode: '# Korzeń\n## Dziecko\n### Wnuk',
+
   // Toolbar - Footnotes
   footnote: 'Przypis',
   insertFootnote: 'Wstaw przypis',

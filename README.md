@@ -460,6 +460,25 @@ This creates a flowchart:
 - `mindmap` - Mind maps
 - `timeline` - Timelines
 
+### Diagrams from Headings (heading2diagram)
+
+Click the **Headings** button in the toolbar (or *Insert → Insert heading-format diagram*) to describe a diagram as a plain outline. The number of `#` marks is the depth in the tree; MerMark converts the outline to Mermaid and renders it, while the file keeps the outline itself:
+
+~~~markdown
+```heading2diagram hier-flow --direction LR
+# Meeting preparation
+## Agenda
+## stadium;Materials:#FAF
+### Previous minutes
+### |review|solidArrow;Proposal
+```
+~~~
+
+- The first word after `heading2diagram` is the diagram type; `--direction`, `--layout`, `--line`, `--arrowDirection` and `--curve` follow the [heading2diagram](https://github.com/sekita/heading2diagram) command line. Without a type, `hier-flow` is used.
+- Rendered types: `hier-flow`, `hier-block`, `struct-flow`, `fishBone`, `pie`, `venn`, `quadrant`. The PlantUML-backed types (`hier-mind`, `hier-mindlabel`, `table*`) show the generated code instead of a preview.
+- Each line may carry `|label|`, a line style, a shape and a `:#color`, e.g. `### |review|solidArrow;hex;Proposal:#f88`. See the [format reference](https://github.com/sekita/heading2diagram/blob/main/docs/headingBasedFormatSyntax.md).
+- The diagram editor previews as you type, lists warnings (typos, level jumps), shows the generated Mermaid, and can turn the block into an ordinary Mermaid diagram for manual fine-tuning.
+
 ---
 
 ## Development
@@ -530,6 +549,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - [Codycody31](https://github.com/Codycody31) - Huge thanks for macOS and Linux support!
 - [TipTap](https://tiptap.dev/) - Headless editor framework
 - [Mermaid](https://mermaid.js.org/) - Diagramming and charting tool
+- [heading2diagram](https://github.com/sekita/heading2diagram) - Heading-format to diagram converter (ported to TypeScript)
 - [Paged.js](https://pagedjs.org/) - Paged media layout for the PDF preview and WebKit printing
 - [Tauri](https://tauri.app/) - Desktop application framework
 - [Vue.js](https://vuejs.org/) - Progressive JavaScript framework

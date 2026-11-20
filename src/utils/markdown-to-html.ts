@@ -4,6 +4,7 @@ import {
   getCurrentMermaidReadFormats,
   type MermaidFormat,
 } from './mermaid-formats';
+import { HEADING_FENCE_LANGUAGE, buildHeadingOptionString, parseHeadingInfo } from './heading2diagram';
 
 interface ListItem {
   indent: number;
@@ -339,10 +340,26 @@ export function extractPageBreaks(md: string): string {
     '__PAGE_BREAK__');
 }
 
-function buildMermaidPlaceholder(code: string, attrStr: string | undefined, index: number): { placeholder: string; node: string } {
+function buildMermaidPlaceholder(
+  code: string,
+  attrStr: string | undefined,
+  index: number,
+  headingInfo?: string,
+): { placeholder: string; node: string } {
   const placeholder = `__MERMAID_BLOCK_${index}__`;
-  const safeCode = code.trim().replace(/<br\s*\/?>/gi, '__BR__');
-  const attrs: string[] = [`data-type="mermaid"`, `data-code="${encodeURIComponent(safeCode)}"`];
+  const attrs: string[] = [`data-type="mermaid"`];
+  if (headingInfo === undefined) {
+    const safeCode = code.trim().replace(/<br\s*\/?>/gi, '__BR__');
+    attrs.push(`data-code="${encodeURIComponent(safeCode)}"`);
+  } else {
+    // Heading-format block (heading2diagram): the source is kept verbatim and
+    // converted to Mermaid by the node view; type and options ride along.
+    const info = parseHeadingInfo(headingInfo);
+    attrs.push(`data-code="${encodeURIComponent(code.replace(/\n+$/, ''))}"`);
+    attrs.push(`data-heading-type="${info.typeId}"`);
+    const optionString = buildHeadingOptionString(info.typeId, info.options);
+    if (optionString) attrs.push(`data-heading-options="${optionString}"`);
+  }
   if (attrStr) {
     const pairs = attrStr.split(',').map((p) => p.trim()).filter(Boolean);
     for (const pair of pairs) {
@@ -429,10 +446,24 @@ export function extractCodeBlocks(
     const end = close.exec(html);
     const code = html.slice(fences.lastIndex, end?.index ?? html.length);
     const lang = /^[\w-]+/.exec(fence[3].trim())?.[0] ?? 'plaintext';
-    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
-    const escapedCode = escapeHtml(code);
-    codeBlocks.push(`<pre><code class="language-${lang}">${escapedCode}</code></pre>`);
-    fencedHtml += html.slice(fenceCursor, fence.index) + fence[1] + placeholder;
+    let before = html.slice(fenceCursor, fence.index);
+    let placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+    if (lang === HEADING_FENCE_LANGUAGE) {
+      // ```heading2diagram <type> [--option value ...] -> diagram node. Like a
+      // Mermaid fence it may be preceded by a `<!--mermaid-attrs:...-->` line.
+      const attrComment = /(?:^|\n)<!--mermaid-attrs:([^>]*?)-->[ \t]*\n$/.exec(before);
+      if (attrComment) before = before.slice(0, attrComment.index + (attrComment[0].startsWith('\n') ? 1 : 0));
+      const body = end ? code.replace(/\n$/, '') : code;
+      const built = buildMermaidPlaceholder(
+        body, attrComment?.[1], codeBlocks.length, fence[3].trim().slice(lang.length),
+      );
+      placeholder = built.placeholder;
+      codeBlocks.push(built.node);
+    } else {
+      const escapedCode = escapeHtml(code);
+      codeBlocks.push(`<pre><code class="language-${lang}">${escapedCode}</code></pre>`);
+    }
+    fencedHtml += before + fence[1] + placeholder;
     fenceCursor = end ? end.index + end[0].length : html.length;
     fences.lastIndex = fenceCursor;
   }

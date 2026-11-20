@@ -460,6 +460,25 @@ graph LR
 - `mindmap` - マインドマップ
 - `timeline` - タイムライン
 
+### 見出しから図を作る (heading2diagram)
+
+ツールバーの **見出し図** ボタン（または「挿入 → 見出し形式の図を挿入」）で、図をアウトラインとして記述できます。`#` の個数が階層の深さを表し、MerMark がアウトラインを Mermaid に変換して描画します。ファイルにはアウトラインそのものが保存されます。
+
+~~~markdown
+```heading2diagram hier-flow --direction LR
+# 会議の準備
+## 議題の確定
+## スタ;資料作成:#FAF
+### 前回議事録
+### |確認|実線矢印;提案書
+```
+~~~
+
+- `heading2diagram` の直後の語が図種です。`--direction`、`--layout`、`--line`、`--arrowDirection`、`--curve` は [heading2diagram](https://github.com/sekita/heading2diagram) のコマンドラインと同じ指定です。図種を省略すると `hier-flow` になります。
+- 描画できる図種: `hier-flow`、`hier-block`、`struct-flow`、`fishBone`、`pie`、`venn`、`quadrant`。PlantUML を生成する図種（`hier-mind`、`hier-mindlabel`、`table` 系）はプレビューの代わりに生成コードを表示します。
+- 各行には `|ラベル|`、線種、形状、`:#色` を付けられます（例: `### |確認|実線矢印;六角;提案書:#f88`）。詳細は[見出し形式文法](https://github.com/sekita/heading2diagram/blob/main/docs/見出し形式文法.md)を参照してください。
+- 図のエディターは入力に合わせてプレビューを更新し、警告（書き間違い、レベル飛び）の一覧と生成された Mermaid を表示します。手作業で調整したい場合は、通常の Mermaid 図に変換できます。
+
 ---
 
 ## 開発
@@ -530,6 +549,7 @@ pnpm test:run
 - [Codycody31](https://github.com/Codycody31) - macOS と Linux への対応に心から感謝します！
 - [TipTap](https://tiptap.dev/) - ヘッドレスエディターフレームワーク
 - [Mermaid](https://mermaid.js.org/) - ダイアグラムとチャートの作成ツール
+- [heading2diagram](https://github.com/sekita/heading2diagram) - 見出し形式から図を生成する変換ツール（TypeScript へ移植）
 - [Paged.js](https://pagedjs.org/) - PDF プレビューと WebKit 印刷のページレイアウト
 - [Tauri](https://tauri.app/) - デスクトップアプリケーションフレームワーク
 - [Vue.js](https://vuejs.org/) - プログレッシブ JavaScript フレームワーク
