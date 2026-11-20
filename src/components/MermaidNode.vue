@@ -10,6 +10,7 @@ import { quickAccessTemplates } from "../data/diagramTemplates";
 import DiagramTemplateModal from "./DiagramTemplateModal.vue";
 import { useAiMermaidTarget } from "../composables/useAiMermaidTarget";
 import {
+  buildHeadingGallery,
   buildHeadingOptionString,
   convertHeadingBlock,
   defaultHeadingOptions,
@@ -22,6 +23,7 @@ import {
   typeIdList,
   validHeadingTypes,
   type ExplicitHeadingOptions,
+  type HeadingGalleryItem,
   type HeadingOptionName,
 } from "../utils/heading2diagram";
 
@@ -337,11 +339,8 @@ const fixMermaidViewBox = async (containerEl: HTMLElement): Promise<void> => {
   }
 };
 
-const renderPreview = async () => {
-  if (!previewContainerRef.value || !isEditing.value) return;
-
-  ensureElkLayoutLoaders();
-
+/** Mermaid settings shared by the editor preview and the gallery thumbnails. */
+const initializeMermaidForEditor = () => {
   mermaid.initialize({
     startOnLoad: false,
     theme: "base",
@@ -378,6 +377,14 @@ const renderPreview = async () => {
         }
       : undefined,
   });
+};
+
+const renderPreview = async () => {
+  if (!previewContainerRef.value || !isEditing.value) return;
+
+  ensureElkLayoutLoaders();
+
+  initializeMermaidForEditor();
 
   try {
     previewError.value = null;
@@ -774,6 +781,8 @@ watch(
 
 /** Loads the saved node state into the editing refs. */
 const resetEditState = () => {
+  galleryRenderToken++;
+  headingPreviewTab.value = "preview";
   const headingType = props.node.attrs.headingType ?? null;
   editHeadingType.value = headingType;
   showGeneratedCode.value = false;
@@ -849,6 +858,108 @@ const applicableHeadingTypes = computed(
 );
 const headingTypeLabel = (typeId: string): string =>
   applicableHeadingTypes.value.has(typeId) ? typeId : `${typeId} (${t.value.headingDiagramNotApplicable})`;
+
+// ===== Heading-format gallery =====
+// Shows the source drawn with every applicable type and with each value of
+// each option of the current type, so the settings can be compared and picked.
+const headingPreviewTab = ref<"preview" | "gallery">("preview");
+const isGalleryOpen = computed(() => isEditing.value && isEditHeading.value && headingPreviewTab.value === "gallery");
+/** Debounced copy of the text being edited (the gallery redraws many diagrams). */
+const galleryCode = ref("");
+let galleryCodeTimeout: ReturnType<typeof setTimeout> | null = null;
+watch(editCode, (code) => {
+  if (galleryCodeTimeout) clearTimeout(galleryCodeTimeout);
+  galleryCodeTimeout = setTimeout(() => { galleryCode.value = code; }, 500);
+});
+watch(isGalleryOpen, async (open) => {
+  if (open) {
+    galleryCode.value = editCode.value;
+  } else if (isEditing.value) {
+    // The preview pane was unmounted while the gallery was shown; redraw it.
+    await nextTick();
+    renderPreview();
+  }
+});
+
+const galleryItems = computed<HeadingGalleryItem[]>(() =>
+  isGalleryOpen.value && editHeadingType.value
+    ? buildHeadingGallery(galleryCode.value, editHeadingType.value, editHeadingOptions.value)
+    : [],
+);
+const galleryTypeItems = computed(() => galleryItems.value.filter((item) => item.group === "type"));
+const galleryOptionGroups = computed(() =>
+  editOptionNames.value
+    .map((name) => ({ name, items: galleryItems.value.filter((item) => item.optionName === name) }))
+    .filter((group) => group.items.length > 0),
+);
+
+/** Card errors (conversion or Mermaid) by item key. */
+const galleryErrors = ref<Record<string, string>>({});
+const galleryThumbs = new Map<string, HTMLElement>();
+const setGalleryThumb = (key: string, el: unknown) => {
+  if (el instanceof HTMLElement) galleryThumbs.set(key, el);
+  else galleryThumbs.delete(key);
+};
+/** Rendered (and post-processed) SVG markup by theme + Mermaid source. */
+const gallerySvgCache = new Map<string, string>();
+let galleryRenderToken = 0;
+
+const renderGallery = async () => {
+  const token = ++galleryRenderToken;
+  const items = galleryItems.value;
+  const errors: Record<string, string> = {};
+  for (const item of items) {
+    if (!item.conversion.ok) errors[item.key] = item.conversion.error ?? t.value.diagramError;
+  }
+  galleryErrors.value = errors;
+  if (!items.length) return;
+  await nextTick();
+  ensureElkLayoutLoaders();
+  initializeMermaidForEditor();
+  for (const [index, item] of items.entries()) {
+    if (token !== galleryRenderToken) return; // superseded by a newer render
+    if (!item.conversion.ok || item.conversion.language !== "mermaid") continue;
+    const el = galleryThumbs.get(item.key);
+    if (!el) continue;
+    const code = item.conversion.code;
+    const cacheKey = `${isDark.value ? "dark" : "light"}\n${code}`;
+    const cached = gallerySvgCache.get(cacheKey);
+    if (cached !== undefined) {
+      el.innerHTML = cached;
+      continue;
+    }
+    el.innerHTML = '<span class="heading-gallery-loading">…</span>';
+    try {
+      const { svg } = await mermaid.render(`mermaid-gallery-${token}-${index}`, code.replace(/\\n/g, "<br/>"));
+      if (token !== galleryRenderToken) return;
+      el.innerHTML = svg;
+      await fixMermaidViewBox(el);
+      if (isDark.value) repaintMermaidDark(el);
+      if (gallerySvgCache.size > 300) gallerySvgCache.clear();
+      gallerySvgCache.set(cacheKey, el.innerHTML);
+    } catch (e: unknown) {
+      if (token !== galleryRenderToken) return;
+      el.innerHTML = "";
+      galleryErrors.value = { ...galleryErrors.value, [item.key]: e instanceof Error ? e.message : t.value.diagramError };
+    }
+  }
+};
+
+watch(galleryItems, () => { renderGallery(); });
+watch(isDark, () => { if (isGalleryOpen.value) renderGallery(); });
+
+/** Click: take over the card's type and options (Save still writes them). */
+const applyGalleryItem = (item: HeadingGalleryItem) => {
+  editHeadingType.value = item.typeId;
+  editHeadingOptions.value = { ...item.options };
+};
+/** Double-click: take over the settings and look at the full-size preview. */
+const applyGalleryItemAndPreview = (item: HeadingGalleryItem) => {
+  applyGalleryItem(item);
+  headingPreviewTab.value = "preview";
+};
+const galleryCardTitle = (item: HeadingGalleryItem): string =>
+  [item.typeId, buildHeadingOptionString(item.typeId, item.options)].filter(Boolean).join(" ");
 
 // Re-render the in-edit preview pane whenever the AI proposes (or revokes) a
 // candidate so the user sees the proposal immediately while still editing.
@@ -1059,6 +1170,26 @@ watch(aiPreviewCode, () => {
           </div>
           <div class="editor-preview-pane" :style="{ flex: `0 0 ${100 - splitRatio}%` }">
             <div class="editor-preview-toolbar">
+              <div v-if="isEditHeading" class="heading-tabs" role="tablist">
+                <button
+                  role="tab"
+                  class="heading-tab"
+                  :class="{ active: headingPreviewTab === 'preview' }"
+                  :aria-selected="headingPreviewTab === 'preview'"
+                  data-testid="heading-tab-preview"
+                  @click="headingPreviewTab = 'preview'"
+                >{{ t.headingDiagramPreviewTab }}</button>
+                <button
+                  role="tab"
+                  class="heading-tab"
+                  :class="{ active: headingPreviewTab === 'gallery' }"
+                  :aria-selected="headingPreviewTab === 'gallery'"
+                  :title="t.headingDiagramGalleryHint"
+                  data-testid="heading-tab-gallery"
+                  @click="headingPreviewTab = 'gallery'"
+                >{{ t.headingDiagramGalleryTab }}</button>
+              </div>
+              <template v-if="!isGalleryOpen">
               <button @click="previewZoomOut" class="btn-zoom" :title="t.zoomOut">−</button>
               <span class="zoom-level">{{ previewZoomPercent }}%</span>
               <button @click="previewZoomIn" class="btn-zoom" :title="t.zoomIn">+</button>
@@ -1072,7 +1203,64 @@ watch(aiPreviewCode, () => {
                 @click="showGeneratedCode = !showGeneratedCode"
               >{{ t.headingDiagramGeneratedCode }}</button>
               <div v-if="previewError" class="preview-error-inline" :title="previewError">{{ previewError }}</div>
+              </template>
+              <span v-else class="heading-gallery-hint">{{ t.headingDiagramGalleryHint }}</span>
             </div>
+            <!-- Gallery: the same source under every applicable type and option value -->
+            <div v-if="isGalleryOpen" class="heading-gallery" data-testid="heading-gallery">
+              <section class="heading-gallery-section">
+                <h3 class="heading-gallery-title">{{ t.headingDiagramGalleryTypes }}</h3>
+                <div v-if="!galleryTypeItems.length" class="heading-gallery-empty">{{ t.headingDiagramGalleryEmpty }}</div>
+                <div class="heading-gallery-grid">
+                  <button
+                    v-for="item in galleryTypeItems"
+                    :key="item.key"
+                    class="heading-gallery-card"
+                    :class="{ current: item.current }"
+                    :title="galleryCardTitle(item)"
+                    :data-testid="`heading-gallery-${item.key}`"
+                    @click="applyGalleryItem(item)"
+                    @dblclick="applyGalleryItemAndPreview(item)"
+                  >
+                    <div v-if="item.conversion.language !== 'mermaid'" class="heading-gallery-code">{{ item.conversion.code }}</div>
+                    <div v-else :ref="(el) => setGalleryThumb(item.key, el)" class="heading-gallery-thumb"></div>
+                    <div v-if="galleryErrors[item.key]" class="heading-gallery-error">{{ galleryErrors[item.key] }}</div>
+                    <div class="heading-gallery-label">
+                      <span>{{ item.label }}</span>
+                      <span v-if="item.conversion.language !== 'mermaid'" class="heading-gallery-tag">PlantUML</span>
+                      <span v-if="item.current" class="heading-gallery-tag current">{{ t.headingDiagramGalleryCurrent }}</span>
+                    </div>
+                  </button>
+                </div>
+              </section>
+              <section v-if="galleryOptionGroups.length" class="heading-gallery-section">
+                <h3 class="heading-gallery-title">{{ t.headingDiagramGalleryOptions }} — {{ editHeadingType }}</h3>
+                <div v-for="group in galleryOptionGroups" :key="group.name" class="heading-gallery-option-group">
+                  <h4 class="heading-gallery-subtitle">--{{ group.name }}</h4>
+                  <div class="heading-gallery-grid">
+                    <button
+                      v-for="item in group.items"
+                      :key="item.key"
+                      class="heading-gallery-card"
+                      :class="{ current: item.current }"
+                      :title="galleryCardTitle(item)"
+                      :data-testid="`heading-gallery-${item.key}`"
+                      @click="applyGalleryItem(item)"
+                      @dblclick="applyGalleryItemAndPreview(item)"
+                    >
+                      <div v-if="item.conversion.ok && item.conversion.language !== 'mermaid'" class="heading-gallery-code">{{ item.conversion.code }}</div>
+                      <div v-else-if="item.conversion.ok" :ref="(el) => setGalleryThumb(item.key, el)" class="heading-gallery-thumb"></div>
+                      <div v-if="galleryErrors[item.key]" class="heading-gallery-error">{{ galleryErrors[item.key] }}</div>
+                      <div class="heading-gallery-label">
+                        <span>{{ item.label }}</span>
+                        <span v-if="item.current" class="heading-gallery-tag current">{{ t.headingDiagramGalleryCurrent }}</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+            <template v-else>
             <!-- Input-condition errors need the full text, not the one-line toolbar slot. -->
             <div v-if="isEditHeading && previewError" class="mermaid-error heading-preview-error" data-testid="heading-error">{{ previewError }}</div>
             <div v-if="showPreviewCode && !previewError" class="heading-generated-pane">
@@ -1095,6 +1283,7 @@ watch(aiPreviewCode, () => {
                 :style="previewTransformStyle"
               ></div>
             </div>
+            </template>
           </div>
         </div>
       </div>
@@ -1862,6 +2051,162 @@ watch(aiPreviewCode, () => {
   border: 1px solid var(--border-primary);
   border-radius: 6px;
   user-select: text;
+}
+
+.heading-tabs {
+  display: inline-flex;
+  margin-right: 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.heading-tab {
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: none;
+  cursor: pointer;
+}
+
+.heading-tab + .heading-tab {
+  border-left: 1px solid var(--border-primary);
+}
+
+.heading-tab.active {
+  color: #fff;
+  background: var(--primary);
+}
+
+.heading-gallery-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heading-gallery {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 24px;
+}
+
+.heading-gallery-section + .heading-gallery-section {
+  margin-top: 20px;
+}
+
+.heading-gallery-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.heading-gallery-subtitle {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: "Fira Code", "Consolas", monospace;
+  color: var(--text-secondary);
+}
+
+.heading-gallery-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.heading-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.heading-gallery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+  color: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.heading-gallery-card:hover {
+  border-color: var(--primary);
+}
+
+.heading-gallery-card.current {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.heading-gallery-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 140px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.heading-gallery-thumb :deep(svg) {
+  max-width: 100% !important;
+  max-height: 140px;
+  width: auto;
+  height: auto;
+}
+
+.heading-gallery-loading {
+  color: var(--text-muted);
+}
+
+.heading-gallery-code {
+  height: 140px;
+  margin: 0;
+  overflow: hidden;
+  font-family: "Fira Code", "Consolas", monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+.heading-gallery-error {
+  max-height: 60px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--error-color, #dc2626);
+}
+
+.heading-gallery-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: "Fira Code", "Consolas", monospace;
+  color: var(--text-primary);
+}
+
+.heading-gallery-tag {
+  padding: 0 5px;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.heading-gallery-tag.current {
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .heading-preview-error {

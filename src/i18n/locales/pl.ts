@@ -123,6 +123,13 @@ const pl: Translations = {
   headingDiagramToMermaidHint: 'Zastąp tekst nagłówków wygenerowanym kodem Mermaid, aby dopracować go ręcznie',
   headingDiagramPlantumlNote: 'Ten typ generuje kod PlantUML, którego nie można tu wyświetlić. Zamiast tego pokazano wygenerowany kod.',
   headingDiagramWarnings: 'Ostrzeżenia',
+  headingDiagramPreviewTab: 'Podgląd',
+  headingDiagramGalleryTab: 'Porównaj',
+  headingDiagramGalleryHint: 'Kliknij diagram, aby użyć jego typu i opcji; dwuklik otwiera też podgląd',
+  headingDiagramGalleryTypes: 'Typy diagramów',
+  headingDiagramGalleryOptions: 'Opcje',
+  headingDiagramGalleryCurrent: 'bieżący',
+  headingDiagramGalleryEmpty: 'Żaden typ diagramu nie pasuje do tego tekstu.',
   enterHeadingCode: '# Korzeń\n## Dziecko\n### Wnuk',
 
   // Toolbar - Footnotes

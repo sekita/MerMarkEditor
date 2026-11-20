@@ -123,6 +123,13 @@ const de: Translations = {
   headingDiagramToMermaidHint: 'Überschriftentext durch den generierten Mermaid-Code ersetzen, um ihn von Hand anzupassen',
   headingDiagramPlantumlNote: 'Dieser Typ erzeugt PlantUML, das hier nicht dargestellt werden kann. Stattdessen wird der generierte Code angezeigt.',
   headingDiagramWarnings: 'Warnungen',
+  headingDiagramPreviewTab: 'Vorschau',
+  headingDiagramGalleryTab: 'Vergleich',
+  headingDiagramGalleryHint: 'Diagramm anklicken, um Typ und Optionen zu übernehmen; Doppelklick öffnet zusätzlich die Vorschau',
+  headingDiagramGalleryTypes: 'Diagrammtypen',
+  headingDiagramGalleryOptions: 'Optionen',
+  headingDiagramGalleryCurrent: 'aktuell',
+  headingDiagramGalleryEmpty: 'Kein Diagrammtyp kann diesen Text darstellen.',
   enterHeadingCode: '# Wurzel\n## Kind\n### Enkel',
 
   // Toolbar - Footnotes

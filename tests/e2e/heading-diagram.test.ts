@@ -184,3 +184,70 @@ test('toolbar inserts a heading-format block; PlantUML types show the generated 
   await expect.poll(() => fs.getFs()[path]).toContain('```mermaid\n%%{init: {"theme":"base"');
   expect(fs.getFs()[path]).not.toContain('heading2diagram');
 });
+
+test('compare tab: every type and option value side by side, click to adopt', async ({ page }, testInfo) => {
+  const original = ['Intro', '', fence('hier-flow', meeting), '', 'Outro'].join('\n');
+  const fs = await setupTauriMocks(page, { initialFs: { [path]: original }, openFilePath: path });
+  await page.goto('/');
+  const diagram = diagrams(page).first();
+  await expect(diagram.locator('.mermaid-content svg')).toContainText('会議の準備');
+  await page.waitForTimeout(400);
+
+  await diagram.hover();
+  await diagram.getByTitle('Edit', { exact: true }).click();
+  const editor = page.locator('.editor-fullscreen');
+  await editor.getByTestId('heading-tab-gallery').click();
+  const gallery = editor.getByTestId('heading-gallery');
+  await expect(gallery).toBeVisible();
+
+  // Type cards: only the types the text fits; Mermaid ones drawn, PlantUML ones as code.
+  const typeCard = (type: string) => gallery.getByTestId(`heading-gallery-type:${type}`);
+  for (const type of ['hier-mindlabel', 'hier-block', 'hier-flow', 'fishBone', 'struct-flow']) {
+    await expect(typeCard(type), type).toBeVisible();
+  }
+  await expect(typeCard('pie')).toHaveCount(0);
+  await expect(typeCard('hier-mind')).toHaveCount(0); // labels present -> hier-mindlabel
+  await expect(typeCard('hier-flow')).toHaveClass(/current/);
+  await expect(typeCard('hier-block').locator('svg')).toContainText('会議の準備');
+  await expect(typeCard('hier-mindlabel')).toContainText('@startmindmap');
+
+  // Option cards for the current type (hier-flow has 5 options, 29 values).
+  const optionCards = gallery.locator('[data-testid^="heading-gallery-option:"]');
+  await expect(optionCards).toHaveCount(5 + 6 + 6 + 2 + 10);
+  await expect(gallery.locator('[data-testid^="heading-gallery-option:"] svg')).toHaveCount(29, { timeout: 30_000 });
+  await expect(gallery.getByTestId('heading-gallery-option:direction:TB')).toHaveClass(/current/);
+  await page.screenshot({ path: testInfo.outputPath('gallery-hier-flow.png') });
+
+  // Click an option card: the option pickers follow, and the gallery re-centres on it.
+  await gallery.getByTestId('heading-gallery-option:direction:LR').click();
+  await expect(editor.getByTestId('heading-option-direction')).toHaveValue('LR');
+  await expect(gallery.getByTestId('heading-gallery-option:direction:LR')).toHaveClass(/current/);
+  await expect(gallery.getByTestId('heading-gallery-option:direction:TB')).not.toHaveClass(/current/);
+
+  // Click a type card: the type changes and the option section switches to it.
+  await typeCard('hier-block').click();
+  await expect(editor.getByTestId('heading-type-select')).toHaveValue('hier-block');
+  await expect(optionCards).toHaveCount(5 + 6 + 6 + 2);
+  await expect(gallery.getByTestId('heading-gallery-option:direction:LR')).toHaveClass(/current/); // carried over
+  await gallery.getByTestId('heading-gallery-option:layout:tight').click();
+  await expect(gallery.locator('[data-testid^="heading-gallery-option:"] svg')).toHaveCount(19, { timeout: 30_000 });
+  await page.screenshot({ path: testInfo.outputPath('gallery-hier-block.png') });
+
+  // Editing the text refreshes the gallery.
+  await editor.locator('textarea').fill([...meeting, '## 追加項目'].join('\n'));
+  await expect(typeCard('hier-block').locator('svg')).toContainText('追加項目');
+
+  // Double-click: adopt and go back to the full-size preview.
+  await gallery.getByTestId('heading-gallery-option:line:dottedArrow').dblclick();
+  await expect(gallery).toHaveCount(0);
+  await expect(editor.getByTestId('heading-option-line')).toHaveValue('dottedArrow');
+  await expect(editor.locator('.editor-preview-content svg')).toContainText('追加項目');
+
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => fs.getFs()[path]).toBe([
+    'Intro', '',
+    fence('hier-block --direction LR --layout tight --line dottedArrow', [...meeting, '## 追加項目']),
+    '', 'Outro',
+  ].join('\n'));
+});

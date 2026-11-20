@@ -132,6 +132,13 @@ export interface Translations {
   headingDiagramToMermaidHint: string;
   headingDiagramPlantumlNote: string;
   headingDiagramWarnings: string;
+  headingDiagramPreviewTab: string;
+  headingDiagramGalleryTab: string;
+  headingDiagramGalleryHint: string;
+  headingDiagramGalleryTypes: string;
+  headingDiagramGalleryOptions: string;
+  headingDiagramGalleryCurrent: string;
+  headingDiagramGalleryEmpty: string;
   enterHeadingCode: string;
 
   // Toolbar - Footnotes

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildHeadingGallery,
   buildHeadingInfo,
   buildHeadingOptionString,
   convertHeadingBlock,
@@ -166,5 +167,55 @@ describe('heading2diagram editor API', () => {
       'hier-mind', 'hier-mindlabel', 'hier-block', 'hier-flow', 'fishBone', 'pie',
       'table', 'tablec', 'table1', 'table1c', 'table2', 'table2c', 'table3', 'table3c', 'struct-flow',
     ]);
+  });
+});
+
+describe('heading2diagram gallery', () => {
+  const tree = '# A\n## B\n## C\n### D';
+
+  it('lists every applicable type with the current options', () => {
+    const items = buildHeadingGallery(tree, 'hier-flow', { direction: 'LR', layout: 'tight' });
+    const types = items.filter(item => item.group === 'type');
+    expect(types.map(item => item.typeId)).toEqual(validHeadingTypes(tree));
+    const flow = types.find(item => item.typeId === 'hier-flow')!;
+    expect(flow.current).toBe(true);
+    expect(flow.options).toEqual({ direction: 'LR', layout: 'tight' });
+    expect(flow.conversion.code).toContain('flowchart LR');
+    // options a type does not understand are not carried over
+    expect(types.find(item => item.typeId === 'struct-flow')!.options).toEqual({ layout: 'tight' });
+    expect(types.find(item => item.typeId === 'fishBone')!.options).toEqual({});
+    expect(types.filter(item => item.current)).toHaveLength(1);
+  });
+
+  it('leaves hier-mind out when labels turn it into hier-mindlabel', () => {
+    const types = buildHeadingGallery('# A\n## |x|B', 'hier-flow')
+      .filter(item => item.group === 'type').map(item => item.typeId);
+    expect(types).toContain('hier-mindlabel');
+    expect(types).not.toContain('hier-mind');
+  });
+
+  it('varies one option at a time for the current type', () => {
+    const items = buildHeadingGallery(tree, 'hier-block', { direction: 'LR' })
+      .filter(item => item.group === 'option');
+    expect([...new Set(items.map(item => item.optionName))]).toEqual(['direction', 'layout', 'line', 'arrowDirection']);
+    expect(items).toHaveLength(5 + 6 + 6 + 2);
+    const tight = items.find(item => item.optionName === 'layout' && item.label === 'tight')!;
+    expect(tight.options).toEqual({ direction: 'LR', layout: 'tight' });
+    expect(tight.current).toBe(false);
+    const tb = items.find(item => item.optionName === 'direction' && item.label === 'TB')!;
+    expect(tb.options).toEqual({}); // back to the default
+    expect(items.filter(item => item.current).map(item => item.key))
+      .toEqual(['option:direction:LR', 'option:layout:normal', 'option:line:solid', 'option:arrowDirection:default']);
+    expect(items.every(item => item.conversion.ok)).toBe(true);
+  });
+
+  it('offers no option cards for types without options', () => {
+    const items = buildHeadingGallery('# T\n## a:1\n## b:2', 'pie');
+    expect(items.filter(item => item.group === 'option')).toEqual([]);
+    expect(items.find(item => item.typeId === 'pie')!.current).toBe(true);
+  });
+
+  it('is empty when no type can draw the source', () => {
+    expect(buildHeadingGallery('not a heading', 'hier-flow').filter(item => item.group === 'type')).toEqual([]);
   });
 });

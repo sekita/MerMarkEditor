@@ -123,6 +123,13 @@ const zhCN: Translations = {
   headingDiagramToMermaidHint: '将标题文本替换为生成的 Mermaid 代码，以便手动微调',
   headingDiagramPlantumlNote: '此类型生成 PlantUML，无法在此预览，改为显示生成的代码。',
   headingDiagramWarnings: '警告',
+  headingDiagramPreviewTab: '预览',
+  headingDiagramGalleryTab: '对比',
+  headingDiagramGalleryHint: '单击图表以采用其类型和选项；双击同时返回预览',
+  headingDiagramGalleryTypes: '图表类型',
+  headingDiagramGalleryOptions: '选项',
+  headingDiagramGalleryCurrent: '当前',
+  headingDiagramGalleryEmpty: '没有可以绘制此文本的图表类型。',
   enterHeadingCode: '# 根\n## 子\n### 孙',
 
   // Toolbar - Footnotes

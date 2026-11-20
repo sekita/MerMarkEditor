@@ -123,6 +123,13 @@ const en: Translations = {
   headingDiagramToMermaidHint: 'Replace the heading text with the generated Mermaid code to fine-tune it by hand',
   headingDiagramPlantumlNote: 'This type generates PlantUML, which cannot be previewed here. The generated code is shown instead.',
   headingDiagramWarnings: 'Warnings',
+  headingDiagramPreviewTab: 'Preview',
+  headingDiagramGalleryTab: 'Compare',
+  headingDiagramGalleryHint: 'Click a diagram to use its type and options; double-click to also open the preview',
+  headingDiagramGalleryTypes: 'Diagram types',
+  headingDiagramGalleryOptions: 'Options',
+  headingDiagramGalleryCurrent: 'current',
+  headingDiagramGalleryEmpty: 'No diagram type can draw this text.',
   enterHeadingCode: '# Root\n## Child\n### Grandchild',
 
   // Toolbar - Footnotes

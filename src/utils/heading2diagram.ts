@@ -1421,3 +1421,94 @@ export function convertHeadingBlock(
 export function validHeadingTypes(source: string): string[] {
   return typeIdList.filter(typeId => runHeading2Diagram(source, [typeId]).exitCode === 0);
 }
+
+// ---------------------------------------------------------------------------
+// Gallery (compare the same source under several types / options)
+// ---------------------------------------------------------------------------
+
+export interface HeadingGalleryItem {
+  /** Stable key for list rendering. */
+  key: string;
+  /** `type`: one card per diagram type; `option`: one value of one option changed. */
+  group: 'type' | 'option';
+  /** For `option` cards, the option that differs from the current settings. */
+  optionName: HeadingOptionName | null;
+  /** Type the card applies when chosen. */
+  typeId: string;
+  /** Options the card applies when chosen (defaults omitted). */
+  options: ExplicitHeadingOptions;
+  /** Short caption (`hier-block`, `LR`, `tight`, ...). */
+  label: string;
+  /** Equals the settings currently being edited. */
+  current: boolean;
+  conversion: HeadingConversion;
+}
+
+/** Drops values that equal the default or do not apply to the type. */
+function normaliseHeadingOptions(typeId: string, options: ExplicitHeadingOptions): ExplicitHeadingOptions {
+  const result: ExplicitHeadingOptions = {};
+  for (const name of meaningfulOptions[typeId] ?? []) {
+    const value = options[name];
+    if (value !== undefined && value !== defaultHeadingOptions[name] && optionChoices[name].includes(value)) {
+      result[name] = value;
+    }
+  }
+  return result;
+}
+
+const sameOptions = (a: ExplicitHeadingOptions, b: ExplicitHeadingOptions): boolean =>
+  optionOrder.every(name => a[name] === b[name]);
+
+/**
+ * Builds the cards of the comparison gallery for one heading-format source:
+ *
+ * - `type` cards: every type whose input condition the source satisfies,
+ *   using the current options where they apply (what the CLI prints when run
+ *   without `-t`, plus the table variants). `hier-mind` is left out when the
+ *   source has labels, because it would be generated as `hier-mindlabel`.
+ * - `option` cards: for the current type, each value of each option it
+ *   understands, changing that single option and keeping the others.
+ */
+export function buildHeadingGallery(
+  source: string,
+  currentType: string,
+  currentOptions: ExplicitHeadingOptions = {},
+): HeadingGalleryItem[] {
+  const items: HeadingGalleryItem[] = [];
+  const current = normaliseHeadingOptions(currentType, currentOptions);
+
+  for (const typeId of typeIdList) {
+    const options = normaliseHeadingOptions(typeId, currentOptions);
+    const conversion = convertHeadingBlock(source, typeId, options);
+    if (!conversion.ok || conversion.typeId !== typeId) continue;
+    items.push({
+      key: `type:${typeId}`,
+      group: 'type',
+      optionName: null,
+      typeId,
+      options,
+      label: typeId,
+      current: typeId === currentType && sameOptions(options, current),
+      conversion,
+    });
+  }
+
+  if (isHeadingTypeId(currentType)) {
+    for (const optionName of meaningfulOptions[currentType] ?? []) {
+      for (const value of optionChoices[optionName]) {
+        const options = normaliseHeadingOptions(currentType, { ...current, [optionName]: value });
+        items.push({
+          key: `option:${optionName}:${value}`,
+          group: 'option',
+          optionName,
+          typeId: currentType,
+          options,
+          label: value,
+          current: sameOptions(options, current),
+          conversion: convertHeadingBlock(source, currentType, options),
+        });
+      }
+    }
+  }
+  return items;
+}

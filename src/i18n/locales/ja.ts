@@ -123,6 +123,13 @@ const ja: Translations = {
   headingDiagramToMermaidHint: '見出しテキストを生成された Mermaid コードに置き換え、手作業で調整できるようにします',
   headingDiagramPlantumlNote: 'この図種は PlantUML を生成するため、ここではプレビューできません。生成されたコードを表示します。',
   headingDiagramWarnings: '警告',
+  headingDiagramPreviewTab: 'プレビュー',
+  headingDiagramGalleryTab: '一覧',
+  headingDiagramGalleryHint: '図をクリックするとその図種・オプションを反映します（ダブルクリックでプレビューに戻ります）',
+  headingDiagramGalleryTypes: '図種',
+  headingDiagramGalleryOptions: 'オプション',
+  headingDiagramGalleryCurrent: '現在',
+  headingDiagramGalleryEmpty: 'この入力から生成できる図種がありません。',
   enterHeadingCode: '# ルート\n## 子\n### 孫',
 
   // Toolbar - Footnotes
