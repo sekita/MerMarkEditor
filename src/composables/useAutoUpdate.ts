@@ -1,9 +1,12 @@
 import { ref } from 'vue';
 import { isFlatpak } from '../services/flatpak';
+import { fetchLatestForkRelease, readForkBuildInfo } from '../utils/fork-release';
 
 export interface UpdateInfo {
   version: string;
   notes: string;
+  /** Fork builds: release page to open instead of installing in place. */
+  downloadUrl?: string;
 }
 
 export interface UseAutoUpdateReturn {
@@ -53,8 +56,32 @@ async function managedByFlatpak(): Promise<boolean> {
   return updatesViaFlatpak.value;
 }
 
+/** Fork builds: look for a newer build in the fork's own GitHub Releases. */
+async function runForkCheck(repo: string, build: number, ignoreDismissed: boolean): Promise<void> {
+  noUpdateFound.value = false;
+  isCheckingForUpdates.value = true;
+  try {
+    const release = await fetchLatestForkRelease(repo);
+    if (!release || release.build <= build) {
+      if (ignoreDismissed) noUpdateFound.value = true;
+      return;
+    }
+    const version = release.tag.replace(/^v/, '');
+    if (!ignoreDismissed && localStorage.getItem(DISMISSED_KEY) === version) return;
+    updateInfo.value = { version, notes: release.notes, downloadUrl: release.url };
+    showUpdateDialog.value = true;
+  } catch (error) {
+    console.log('Update check skipped:', error);
+    if (ignoreDismissed) noUpdateFound.value = true;
+  } finally {
+    isCheckingForUpdates.value = false;
+  }
+}
+
 async function runCheck(ignoreDismissed: boolean): Promise<void> {
   if (await managedByFlatpak()) return;
+  const fork = readForkBuildInfo();
+  if (fork) return runForkCheck(fork.repo, fork.build, ignoreDismissed);
   noUpdateFound.value = false;
   isCheckingForUpdates.value = true;
   try {
@@ -91,6 +118,19 @@ export function useAutoUpdate(): UseAutoUpdateReturn {
   const checkForUpdatesManual = (): Promise<void> => runCheck(true);
 
   const downloadAndInstallUpdate = async (): Promise<void> => {
+    // Fork builds cannot be installed in place (no upstream signature):
+    // open the release page so the new build can be downloaded.
+    const downloadUrl = updateInfo.value?.downloadUrl;
+    if (downloadUrl) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(downloadUrl);
+        showUpdateDialog.value = false;
+      } catch (error) {
+        updateError.value = error instanceof Error ? error.message : String(error);
+      }
+      return;
+    }
     try {
       isUpdating.value = true;
       updateError.value = null;

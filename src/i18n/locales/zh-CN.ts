@@ -290,6 +290,8 @@ const zhCN: Translations = {
   later: '稍后',
   updating: '正在更新...',
   updateNow: '立即更新',
+  openDownloadPage: '打开下载页面',
+  forkUpdateNote: '此版本通过其专用发布页面分发。请在该页面下载新版本并替换旧版本。',
   whatsNew: '新功能',
   whatsNewIn: '新功能 -',
   noReleaseNotesForBuild: '此版本尚无发行说明。',

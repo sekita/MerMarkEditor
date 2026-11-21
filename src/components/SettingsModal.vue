@@ -1004,7 +1004,7 @@ onUnmounted(() => {
                   :disabled="isUpdating"
                   @click="downloadAndInstallUpdate()"
                 >
-                  {{ isUpdating ? t.updating : t.updateNow }}
+                  {{ isUpdating ? t.updating : updateInfo.downloadUrl ? t.openDownloadPage : t.updateNow }}
                 </button>
                 <div v-if="isUpdating" class="update-progress-bar">
                   <div class="update-progress-fill" :style="{ width: updateProgress + '%' }"></div>

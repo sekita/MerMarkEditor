@@ -290,6 +290,8 @@ const pl: Translations = {
   later: 'Później',
   updating: 'Aktualizowanie...',
   updateNow: 'Aktualizuj teraz',
+  openDownloadPage: 'Otwórz stronę pobierania',
+  forkUpdateNote: 'Ta wersja jest dystrybuowana z własnej strony wydań. Pobierz tam nową wersję i zastąp nią starą.',
   whatsNew: 'Co nowego',
   whatsNewIn: 'Co nowego w',
   noReleaseNotesForBuild: 'Brak notatek do tej wersji.',

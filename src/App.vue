@@ -2445,6 +2445,7 @@ useCommandShortcuts(appCommands);
       :progress="updateProgress"
       :is-updating="isUpdating"
       :error="updateError"
+      :download-url="updateInfo.downloadUrl ?? null"
       @close="closeUpdateDialog"
       @update="downloadAndInstallUpdate"
     />

@@ -290,6 +290,8 @@ const ja: Translations = {
   later: '後で',
   updating: 'アップデート中…',
   updateNow: '今すぐアップデート',
+  openDownloadPage: 'ダウンロードページを開く',
+  forkUpdateNote: 'このビルドは専用のリリースページから配布されています。ページから新しい版をダウンロードし、古い版と置き換えてください。',
   whatsNew: "新機能",
   whatsNewIn: "新機能：",
   noReleaseNotesForBuild: 'このビルドのリリースノートはまだありません。',

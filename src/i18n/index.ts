@@ -299,6 +299,8 @@ export interface Translations {
   later: string;
   updating: string;
   updateNow: string;
+  openDownloadPage: string;
+  forkUpdateNote: string;
   whatsNew: string;
   whatsNewIn: string;
   noReleaseNotesForBuild: string;

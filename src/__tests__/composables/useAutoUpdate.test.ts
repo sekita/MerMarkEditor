@@ -13,6 +13,9 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
 
 const mockFlatpak = vi.hoisted(() => ({ value: false }));
 
+const mockShellOpen = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: mockShellOpen }));
+
 vi.mock('../../services/flatpak', () => ({
   isFlatpak: vi.fn(async () => mockFlatpak.value),
 }));
@@ -179,5 +182,74 @@ describe('useAutoUpdate', () => {
     await checkForUpdates();
 
     expect(updateInfo.value?.notes).toBe('');
+  });
+
+  describe('fork builds', () => {
+    const releases = (list: unknown[]) => vi.fn(async (_url: string, _init?: unknown) => ({ ok: true, json: async () => list }));
+
+    beforeEach(() => {
+      vi.stubEnv('VITE_RELEASE_REPO', 'sekita/MerMarkEditor');
+      vi.stubEnv('VITE_RELEASE_BUILD', '5');
+      mockShellOpen.mockClear();
+    });
+    afterEach(() => { vi.unstubAllEnvs(); });
+
+    it('checks the fork releases instead of the upstream updater', async () => {
+      const fetchMock = releases([
+        { tag_name: 'v0.8.6-h2d.6', body: 'new build', html_url: 'https://github.com/sekita/MerMarkEditor/releases/tag/v0.8.6-h2d.6' },
+      ]);
+      vi.stubGlobal('fetch', fetchMock);
+      mockCheckResult.value = { version: '9.9.9', body: 'upstream' };
+      const { checkForUpdates, showUpdateDialog, updateInfo } = useAutoUpdate();
+
+      await checkForUpdates();
+      expect(check).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.github.com/repos/sekita/MerMarkEditor/releases?per_page=30');
+      expect(showUpdateDialog.value).toBe(true);
+      expect(updateInfo.value).toEqual({
+        version: '0.8.6-h2d.6',
+        notes: 'new build',
+        downloadUrl: 'https://github.com/sekita/MerMarkEditor/releases/tag/v0.8.6-h2d.6',
+      });
+    });
+
+    it('stays quiet when the running build is the newest', async () => {
+      vi.stubGlobal('fetch', releases([{ tag_name: 'v0.8.6-h2d.5', body: '' }, { tag_name: 'v0.8.6-h2d.4', body: '' }]));
+      const { checkForUpdates, checkForUpdatesManual, showUpdateDialog, noUpdateFound } = useAutoUpdate();
+      await checkForUpdates();
+      expect(showUpdateDialog.value).toBe(false);
+      await checkForUpdatesManual();
+      expect(noUpdateFound.value).toBe(true);
+    });
+
+    it('respects a dismissed build on the automatic check', async () => {
+      localStorage.setItem(DISMISSED_KEY, '0.8.6-h2d.6');
+      vi.stubGlobal('fetch', releases([{ tag_name: 'v0.8.6-h2d.6', body: '' }]));
+      const { checkForUpdates, checkForUpdatesManual, showUpdateDialog } = useAutoUpdate();
+      await checkForUpdates();
+      expect(showUpdateDialog.value).toBe(false);
+      await checkForUpdatesManual();
+      expect(showUpdateDialog.value).toBe(true);
+    });
+
+    it('opens the release page instead of installing', async () => {
+      vi.stubGlobal('fetch', releases([
+        { tag_name: 'v0.8.6-h2d.8', body: '', html_url: 'https://github.com/sekita/MerMarkEditor/releases/tag/v0.8.6-h2d.8' },
+      ]));
+      const { checkForUpdates, downloadAndInstallUpdate, showUpdateDialog } = useAutoUpdate();
+      await checkForUpdates();
+      await downloadAndInstallUpdate();
+      expect(mockShellOpen).toHaveBeenCalledWith('https://github.com/sekita/MerMarkEditor/releases/tag/v0.8.6-h2d.8');
+      expect(check).not.toHaveBeenCalled();
+      expect(showUpdateDialog.value).toBe(false);
+    });
+
+    it('treats a network error as no update', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+      const { checkForUpdatesManual, showUpdateDialog, noUpdateFound } = useAutoUpdate();
+      await checkForUpdatesManual();
+      expect(showUpdateDialog.value).toBe(false);
+      expect(noUpdateFound.value).toBe(true);
+    });
   });
 });

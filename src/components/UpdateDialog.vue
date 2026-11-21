@@ -11,10 +11,13 @@ const props = withDefaults(defineProps<{
   progress?: number;
   isUpdating?: boolean;
   error?: string | null;
+  /** Fork builds: the button opens this release page instead of installing. */
+  downloadUrl?: string | null;
 }>(), {
   progress: 0,
   isUpdating: false,
   error: null,
+  downloadUrl: null,
 });
 
 const notesExpanded = ref(true);
@@ -38,6 +41,7 @@ const emit = defineEmits<{
       </div>
       <div class="dialog-content">
         <p>{{ t.newVersionAvailable }} <strong>{{ version }}</strong></p>
+        <p v-if="downloadUrl" class="update-fork-note">{{ t.forkUpdateNote }}</p>
         <div v-if="notes" class="update-notes-container">
           <button
             class="update-notes-toggle"
@@ -63,7 +67,7 @@ const emit = defineEmits<{
       <div class="dialog-actions">
         <button @click="emit('close')" class="btn-cancel" :disabled="isUpdating">{{ t.later }}</button>
         <button @click="emit('update')" class="btn-confirm" :disabled="isUpdating">
-          {{ isUpdating ? t.updating : t.updateNow }}
+          {{ isUpdating ? t.updating : downloadUrl ? t.openDownloadPage : t.updateNow }}
         </button>
       </div>
     </div>
@@ -71,6 +75,11 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.update-fork-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .dialog-overlay {
   position: fixed;
   top: 0;
