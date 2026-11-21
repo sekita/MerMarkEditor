@@ -1,5 +1,12 @@
 MerMark Editor に、見出し形式（[heading2diagram](https://github.com/sekita/heading2diagram)）から図を作る機能を追加した Windows 版です。
 
+## この版の変更点（heading2diagram v1.1.0 対応）
+
+- 新しい図種 `star`（放射状の図）を追加しました。第1階層の1個を中心に、第2階層の要素を真上から時計回りに配置します。
+- `star` 用のオプション `--degree`（最初の要素の角度）、`--span`（ブロックが占める列数）、`--radius`（中心からの距離）、`--blockWidth`（配置計算に使うブロック幅）を、図種・オプションの選択欄から数値で指定できます。`--radius` と `--blockWidth` は空欄にすると自動です。
+- 警告・エラーの文言を heading2diagram v1.1.0 に合わせました（例: `line 7: "#" の直後に空白が無い…`、`入力条件違反: pie: …`）。
+- 改行が CR のみのファイルや、全角スペースだけの行を、heading2diagram.py と同じく扱うようにしました。
+
 ## ダウンロード
 
 下の **Assets** から、どちらか一方をダウンロードしてください。
@@ -11,7 +18,7 @@ MerMark Editor に、見出し形式（[heading2diagram](https://github.com/seki
 
 ## 主な機能
 
-- `heading2diagram` ブロック: `#` の見出しで書いたアウトラインを図として表示・編集・保存します（Mermaid 系の図種はプレビュー、PlantUML 系は生成コードを表示）。
+- `heading2diagram` ブロック: `#` の見出しで書いたアウトラインを図として表示・編集・保存します（Mermaid 系の図種はプレビュー、PlantUML 系は生成コードを表示）。heading2diagram v1.1.0 の全図種（`star` を含む）に対応しています。
 
 ### 1. 起動時
 
