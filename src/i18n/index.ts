@@ -125,6 +125,8 @@ export interface Translations {
   headingDiagramEditor: string;
   headingDiagramType: string;
   headingDiagramNotApplicable: string;
+  headingDiagramAuto: string;
+  headingDiagramInvalidNumber: string;
   headingDiagramSample: string;
   headingDiagramSampleHint: string;
   headingDiagramGeneratedCode: string;

@@ -474,9 +474,10 @@ Click the **Headings** button in the toolbar (or *Insert → Insert heading-form
 ```
 ~~~
 
-- The first word after `heading2diagram` is the diagram type; `--direction`, `--layout`, `--line`, `--arrowDirection` and `--curve` follow the [heading2diagram](https://github.com/sekita/heading2diagram) command line. Without a type, `hier-flow` is used.
-- Rendered types: `hier-flow`, `hier-block`, `struct-flow`, `fishBone`, `pie`, `venn`, `quadrant`. The PlantUML-backed types (`hier-mind`, `hier-mindlabel`, `table*`) show the generated code instead of a preview.
+- The first word after `heading2diagram` is the diagram type; `--direction`, `--layout`, `--line`, `--arrowDirection`, `--curve`, `--degree`, `--span`, `--radius` and `--blockWidth` follow the [heading2diagram](https://github.com/sekita/heading2diagram) (v1.1.0) command line. Without a type, `hier-flow` is used.
+- Rendered types: `hier-flow`, `hier-block`, `struct-flow`, `fishBone`, `pie`, `venn`, `quadrant`, `star`. The PlantUML-backed types (`hier-mind`, `hier-mindlabel`, `table*`) show the generated code instead of a preview.
 - Each line may carry `|label|`, a line style, a shape and a `:#color`, e.g. `### |review|solidArrow;hex;Proposal:#f88`. See the [format reference](https://github.com/sekita/heading2diagram/blob/main/docs/headingBasedFormatSyntax.md).
+- `star` (radial diagram) puts the single level-1 heading in the centre and places the level-2 headings clockwise from the top. `--degree` (angle of the first one), `--span` (columns per block), `--radius` (distance from the centre) and `--blockWidth` (block width used for the layout) are numbers; in the editor they are typed into input boxes (leave `--radius` and `--blockWidth` empty for automatic).
 - The diagram editor previews as you type, lists warnings (typos, level jumps), shows the generated Mermaid, and can turn the block into an ordinary Mermaid diagram for manual fine-tuning.
 - **To diagram** converts headings already in the document: put the cursor in a heading (or select several) and the run of headings becomes one heading-format block.
 - **Heading preview** opens Code + Preview with the right pane drawing the *whole file* as heading2diagram input, as `heading2diagram.py FILE` would. The file is not changed; the chosen type and options are remembered per file. The pane can be switched back to **Markdown** at any time.
@@ -552,7 +553,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - [Codycody31](https://github.com/Codycody31) - Huge thanks for macOS and Linux support!
 - [TipTap](https://tiptap.dev/) - Headless editor framework
 - [Mermaid](https://mermaid.js.org/) - Diagramming and charting tool
-- [heading2diagram](https://github.com/sekita/heading2diagram) - Heading-format to diagram converter (ported to TypeScript)
+- [heading2diagram](https://github.com/sekita/heading2diagram) - Heading-format to diagram converter (v1.1.0, ported to TypeScript)
 - [Paged.js](https://pagedjs.org/) - Paged media layout for the PDF preview and WebKit printing
 - [Tauri](https://tauri.app/) - Desktop application framework
 - [Vue.js](https://vuejs.org/) - Progressive JavaScript framework

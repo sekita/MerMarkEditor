@@ -116,6 +116,8 @@ const pl: Translations = {
   headingDiagramEditor: 'Edytor diagramu z nagłówków',
   headingDiagramType: 'Typ',
   headingDiagramNotApplicable: 'dane nie pasują',
+  headingDiagramAuto: 'auto',
+  headingDiagramInvalidNumber: 'Nieprawidłowa liczba dla tej opcji',
   headingDiagramSample: 'Przykład',
   headingDiagramSampleHint: 'Zastąp tekst przykładem dla wybranego typu',
   headingDiagramGeneratedCode: 'Wygenerowany kod',

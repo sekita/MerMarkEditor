@@ -15,6 +15,13 @@ const meeting = [
   '### |確認|実線矢印;提案書',
 ];
 
+const starSource = [
+  '# 円形;会議の準備:#ffd',
+  '## 議題の確定',
+  '## |前回議事録|実線矢印;資料作成',
+  '## 角丸;備品確認',
+];
+
 const diagrams = (page: Page) => page.locator('.ProseMirror .mermaid-wrapper');
 
 test('heading-format blocks render as diagrams for every Mermaid-backed type', async ({ page }, testInfo) => {
@@ -30,13 +37,14 @@ test('heading-format blocks render as diagrams for every Mermaid-backed type', a
       '# 費用が低い', '## 効果が小さい:#fee', '### 見送り', '### 現状維持', '## 効果が大きい', '### 優先実施',
       '# 費用が高い', '## 効果が小さい', '### 中止', '## 効果が大きい', '### 段階導入', '### 試行',
     ]),
+    fence('star --degree 30', starSource),
     'End.',
   ].join('\n\n');
   await setupTauriMocks(page, { initialFs: { [path]: doc }, openFilePath: path });
   await page.goto('/');
 
-  await expect(diagrams(page)).toHaveCount(7);
-  const types = ['hier-flow', 'hier-block', 'struct-flow', 'fishBone', 'pie', 'venn', 'quadrant'];
+  await expect(diagrams(page)).toHaveCount(8);
+  const types = ['hier-flow', 'hier-block', 'struct-flow', 'fishBone', 'pie', 'venn', 'quadrant', 'star'];
   for (const [index, type] of types.entries()) {
     const diagram = diagrams(page).nth(index);
     await expect(diagram, type).toHaveAttribute('data-heading-type', type);
@@ -93,11 +101,11 @@ test('edit a heading-format block: text, type and options, then save the heading
 
   // A type whose condition the text violates explains why, and typos are warned about.
   await editor.getByTestId('heading-type-select').selectOption('pie');
-  await expect(editor.getByTestId('heading-error')).toContainText('図種 pie の入力条件を満たさない');
+  await expect(editor.getByTestId('heading-error')).toContainText('入力条件違反: pie:');
   await editor.getByTestId('heading-type-select').selectOption('hier-block');
   await expect(editor.getByTestId('heading-error')).toHaveCount(0);
   await textarea.fill([...meeting, '## 六角;会場手配:#0FF', '##typo'].join('\n'));
-  await expect(editor.getByTestId('heading-warnings')).toContainText('7行目: "#" の直後に空白が無い');
+  await expect(editor.getByTestId('heading-warnings')).toContainText('line 7: "#" の直後に空白が無い');
   await textarea.fill([...meeting, '## 六角;会場手配:#0FF'].join('\n'));
   await expect(editor.getByTestId('heading-warnings')).toHaveCount(0);
 
@@ -124,6 +132,43 @@ test('edit a heading-format block: text, type and options, then save the heading
   await page.reload();
   await expect(diagrams(page).first()).toHaveAttribute('data-heading-type', 'hier-block');
   await expect(diagrams(page).first().locator('.mermaid-content svg')).toContainText('会場手配');
+});
+
+test('star: the numeric options are typed in, checked and saved', async ({ page }, testInfo) => {
+  const original = ['Intro', '', fence('star', starSource), '', 'Outro'].join('\n');
+  const fs = await setupTauriMocks(page, { initialFs: { [path]: original }, openFilePath: path });
+  await page.goto('/');
+  const diagram = diagrams(page).first();
+  await expect(diagram.locator('.mermaid-content svg')).toContainText('備品確認');
+  await page.waitForTimeout(400); // initial hydration suppresses dirty events
+
+  await diagram.hover();
+  await diagram.getByTitle('Edit', { exact: true }).click();
+  const editor = page.locator('.editor-fullscreen');
+  await expect(editor.getByTestId('heading-type-select')).toHaveValue('star');
+  await expect(editor.getByTestId('heading-option-direction')).toHaveCount(0);
+  const degree = editor.getByTestId('heading-option-degree');
+  await expect(degree).toHaveValue('0');
+  await expect(editor.getByTestId('heading-option-radius')).toHaveAttribute('placeholder', 'auto');
+
+  // An invalid number is marked and not applied; a valid one is.
+  await degree.fill('abc');
+  await degree.press('Enter');
+  await expect(degree).toHaveClass(/invalid/);
+  await degree.fill('45');
+  await degree.press('Enter');
+  await expect(degree).not.toHaveClass(/invalid/);
+  await expect(degree).toHaveValue('45');
+  await editor.getByTestId('heading-option-line').selectOption('dotted');
+  await expect(editor.getByTestId('heading-error')).toHaveCount(0);
+  await expect(editor.locator('.editor-preview-content svg')).toContainText('会議の準備');
+  await page.screenshot({ path: testInfo.outputPath('star-editor.png') });
+
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const expected = ['Intro', '', fence('star --line dotted --degree 45', starSource), '', 'Outro'].join('\n');
+  await expect.poll(() => fs.getFs()[path]).toBe(expected);
 });
 
 test('an untouched document with a heading-format block saves byte-identically', async ({ page }) => {
@@ -314,11 +359,11 @@ test('preview the whole file as a heading diagram without changing it', async ({
   await expect(preview.getByTestId('heading-file-diagram').locator('svg')).toContainText('B11');
   // The descriptive first line is ignored with a warning, as heading2diagram.py does.
   await preview.getByTestId('heading-file-warnings-toggle').click();
-  await expect(preview.getByTestId('heading-file-warnings')).toContainText('1行目: 見出し行でも空行でもない行を無視する');
+  await expect(preview.getByTestId('heading-file-warnings')).toContainText('line 1: 見出し行でも空行でもない行である。無視する');
 
   // A type the input does not fit explains why.
   await preview.getByTestId('heading-type-select').selectOption('hier-flow');
-  await expect(preview.getByTestId('heading-file-error')).toContainText('ルートがちょうど1個であること（ルートが2個ある）');
+  await expect(preview.getByTestId('heading-file-error')).toContainText('ルートがちょうど1個である必要がある（ルートが2個ある）');
 
   // Gallery: pick a type and an option by clicking.
   await preview.getByTestId('heading-file-tab-gallery').click();

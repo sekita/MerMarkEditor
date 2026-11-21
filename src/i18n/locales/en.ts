@@ -116,6 +116,8 @@ const en: Translations = {
   headingDiagramEditor: 'Heading Diagram Editor',
   headingDiagramType: 'Type',
   headingDiagramNotApplicable: 'input does not fit',
+  headingDiagramAuto: 'auto',
+  headingDiagramInvalidNumber: 'Not a valid number for this option',
   headingDiagramSample: 'Sample',
   headingDiagramSampleHint: 'Replace the text with a sample for the selected type',
   headingDiagramGeneratedCode: 'Generated code',

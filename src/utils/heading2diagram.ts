@@ -1,5 +1,5 @@
 /**
- * heading2diagram — TypeScript port of heading2diagram.py (v1.0.2)
+ * heading2diagram — TypeScript port of heading2diagram.py (v1.1.0)
  * https://github.com/sekita/heading2diagram
  * MIT License, Copyright (c) 2026 heading2diagram contributors
  *
@@ -9,8 +9,8 @@
  *
  * `runHeading2Diagram` is a line-for-line port of the CLI's `run()` and is
  * kept byte-compatible with the Python reference outputs (see
- * `__tests__/utils/heading2diagram.test.ts`). Diagnostic messages are kept in
- * Japanese, exactly as the original program prints them.
+ * `__tests__/utils/heading2diagram.test.ts`). Diagnostic messages are kept
+ * exactly as the original program prints them.
  *
  * The second half of the file (`parseHeadingInfo`, `convertHeadingBlock`, …)
  * is the editor-facing API used by the Mermaid node.
@@ -21,14 +21,19 @@
 // ---------------------------------------------------------------------------
 
 export const typeIdList = [
-  'hier-mind', 'hier-mindlabel', 'hier-block', 'hier-flow', 'fishBone',
-  'pie', 'venn', 'table', 'tablec', 'table1', 'table1c', 'table2',
-  'table2c', 'table3', 'table3c', 'struct-flow', 'quadrant',
+  'hier-mind', 'hier-mindlabel', 'hier-block', 'hier-flow', 'fishBone', 'pie', 'venn',
+  'table', 'tablec', 'table1', 'table1c', 'table2', 'table2c', 'table3', 'table3c',
+  'struct-flow', 'quadrant', 'star',
 ] as const;
 export type HeadingTypeId = (typeof typeIdList)[number];
 
 export const tableTypeIds: readonly string[] = [
   'table', 'tablec', 'table1', 'table1c', 'table2', 'table2c', 'table3', 'table3c',
+];
+/** Types generated when the CLI is run without `-t`. */
+export const defaultTypeIds: readonly string[] = [
+  'hier-mind', 'hier-block', 'hier-flow', 'fishBone', 'pie', 'venn', 'table',
+  'struct-flow', 'quadrant', 'star',
 ];
 export const plantumlTypeIds: ReadonlySet<string> = new Set(['hier-mind', 'hier-mindlabel', ...tableTypeIds]);
 
@@ -41,32 +46,57 @@ export const curveChoices = [
   'monotoneX', 'monotoneY', 'natural', 'step',
 ] as const;
 
-export type HeadingOptionName = 'direction' | 'layout' | 'line' | 'arrowDirection' | 'curve';
+/** Options whose value is one of a fixed list. */
+export type ChoiceHeadingOptionName = 'direction' | 'layout' | 'line' | 'arrowDirection' | 'curve';
+/** Numeric options of `star` (v1.1.0). */
+export type NumericHeadingOptionName = 'degree' | 'span' | 'radius' | 'blockWidth';
+export type HeadingOptionName = ChoiceHeadingOptionName | NumericHeadingOptionName;
 export type HeadingOptions = Record<HeadingOptionName, string>;
 export type ExplicitHeadingOptions = Partial<HeadingOptions>;
 
-/** Options that appear in the output heading line (per diagram type, in this order). */
-export const optionOrder: readonly HeadingOptionName[] = ['direction', 'layout', 'line', 'arrowDirection', 'curve'];
+/** Every option, in the order the CLI defines them. */
+export const optionOrder: readonly HeadingOptionName[] = [
+  'direction', 'layout', 'line', 'arrowDirection', 'curve', 'degree', 'span', 'radius', 'blockWidth',
+];
+export const numericOptionNames: readonly NumericHeadingOptionName[] = ['degree', 'span', 'radius', 'blockWidth'];
+export const isNumericHeadingOption = (name: string): name is NumericHeadingOptionName =>
+  (numericOptionNames as readonly string[]).includes(name);
+
+/**
+ * Values offered by the editor for each option. For the choice options this
+ * is the full list the CLI accepts; for the numeric `star` options it is a
+ * set of presets (any valid number is accepted, see `isValidHeadingOptionValue`).
+ * `radius` and `blockWidth` depend on the content, so they have no presets.
+ */
 export const optionChoices: Record<HeadingOptionName, readonly string[]> = {
   direction: directionChoices,
   layout: layoutChoices,
   line: lineChoices,
   arrowDirection: arrowDirectionChoices,
   curve: curveChoices,
+  degree: ['0', '30', '45', '90'],
+  span: ['1', '2', '4', '8'],
+  radius: [],
+  blockWidth: [],
 };
+/** Effective defaults. '' means "automatic" (radius / blockWidth). */
 export const defaultHeadingOptions: HeadingOptions = {
   direction: 'TB', layout: 'normal', line: 'solid', arrowDirection: 'default', curve: 'default',
+  degree: '0', span: '4', radius: '', blockWidth: '',
 };
 const optionFlags: Record<HeadingOptionName, string> = {
   direction: '--direction', layout: '--layout', line: '--line',
   arrowDirection: '--arrowDirection', curve: '--curve',
+  degree: '--degree', span: '--span', radius: '--radius', blockWidth: '--blockWidth',
 };
+/** Options that appear in the output heading line (per diagram type, in this order). */
 export const meaningfulOptions: Record<string, readonly HeadingOptionName[]> = {
   'hier-mind': ['direction', 'layout', 'line'],
   'hier-mindlabel': ['direction', 'layout', 'line'],
   'hier-block': ['direction', 'layout', 'line', 'arrowDirection'],
   'hier-flow': ['direction', 'layout', 'line', 'arrowDirection', 'curve'],
   'struct-flow': ['layout', 'line'],
+  star: ['layout', 'line', 'arrowDirection', 'degree', 'span', 'radius', 'blockWidth'],
 };
 
 const lineStyleNames = new Map<string, string>([
@@ -96,7 +126,7 @@ const shapeNames = new Map<string, string>([
   ['無枠', 'borderless'], ['borderless', 'borderless'],
 ]);
 
-/** Mermaid shape notation (opening bracket, closing bracket). */
+/** Mermaid shape notation (opening mark, closing mark). */
 const shapeBrackets: Record<string, [string, string]> = {
   rect: ['[', ']'],
   rounded: ['(', ')'],
@@ -128,19 +158,45 @@ const blockReverseSymbols: Record<string, string> = {
 };
 const reverseDirection: Record<string, string> = { TB: 'BT', TD: 'BT', BT: 'TB', LR: 'RL', RL: 'LR' };
 
+// star constants (10.9.1)
+const wideCharWidth = 16;
+const narrowCharWidth = 9;
+const blockPaddingX = 30;
+const blockHeight = 40;
+const labelPaddingX = 8;
+const labelHeight = 24;
+const angleWeight = 2.0;
+const sizePenalty = 0.5;
+const searchRange = 1.5;
+
+/** star values per --layout (10.9.2): [minLineLength, labelMargin, minBlockGap, cellGap]. */
+const starLayoutValues: Record<string, [number, number, number, number]> = {
+  tight: [15, 8, 8, 8],
+  normal: [30, 16, 16, 8],
+  spacyX: [60, 32, 32, 8],
+  spacyY: [60, 32, 32, 8],
+  spacyXY: [60, 32, 32, 8],
+  spacyPadding: [30, 16, 16, 30],
+};
+
+const blockPaddingFrontmatter = ['---', 'config:', '  block:', '    padding: 30', '---'];
+
+const fullWidthSpace = '　';
+
+// Python's `str.isspace` set: `\s`/`\S` and `str.strip()` in the reference
+// program use it, and it differs slightly from JavaScript's `\s`.
+const pyWhitespace = '\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000';
+const pyWhitespaceRe = new RegExp(`[${pyWhitespace}]`);
+
 const headingRe = /^(#+)(?:[ \t]+([\s\S]*))?$/;
 const headingTypoRe = /^#+[^ \t#]/;
-const colorRe = /^([\s\S]*):(#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3}))$/;
-// Python's `\S` (str.isspace) differs slightly from JavaScript's, so the
-// whitespace set is spelled out to stay identical to the reference program.
-const badColorRe = /:#[^\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
+const colorRe = /:#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/;
+const colorTypoRe = new RegExp(`:#[^${pyWhitespace}]*$`);
 const modifierRe = /^([^ \t;]*);/;
 const numberRe = /^[0-9]+(\.[0-9]+)?$/;
 
-const fullWidthSpace = '\u3000';
-
 // ---------------------------------------------------------------------------
-// Small helpers mirroring Python string semantics
+// Small helpers mirroring Python semantics
 // ---------------------------------------------------------------------------
 
 const isBlank = (ch: string): boolean => ch === ' ' || ch === '\t';
@@ -157,10 +213,185 @@ function stripRight(text: string): string {
   return text.slice(0, end);
 }
 
-const stripBoth = (text: string): string => stripLeft(stripRight(text));
+/** `text.strip(' \t')`: removes half-width spaces and tabs only. */
+const stripBlank = (text: string): string => stripLeft(stripRight(text));
+
+/** `text.strip()` with no argument (every Unicode whitespace character). */
+function pyStrip(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && pyWhitespaceRe.test(text[start])) start++;
+  while (end > start && pyWhitespaceRe.test(text[end - 1])) end--;
+  return text.slice(start, end);
+}
+
+/** Python's `%` for floats (the result takes the sign of the divisor). */
+function pyMod(value: number, divisor: number): number {
+  let mod = value % divisor;
+  if (mod) {
+    if ((divisor < 0) !== (mod < 0)) mod += divisor;
+  } else {
+    mod = divisor < 0 ? -0 : 0;
+  }
+  return mod;
+}
+
+/** Splits `a` into high and low halves (Dekker) for exact products. */
+function splitDouble(a: number): [number, number] {
+  const c = 134217729 * a; // 2^27 + 1
+  const high = c - (c - a);
+  return [high, a - high];
+}
+
+/** Exact product `a * b` as an unevaluated sum [product, error]. */
+function twoProduct(a: number, b: number): [number, number] {
+  const product = a * b;
+  const [aHigh, aLow] = splitDouble(a);
+  const [bHigh, bLow] = splitDouble(b);
+  const error = ((aHigh * bHigh - product) + aHigh * bLow + aLow * bHigh) + aLow * bLow;
+  return [product, error];
+}
+
+/**
+ * `math.hypot(x, y)`. CPython computes it (almost always) correctly rounded;
+ * `Math.hypot` may be 1 ulp off, so the sum of squares is kept exact and one
+ * corrected Newton step is applied, as CPython does.
+ */
+function pyHypot(x: number, y: number): number {
+  x = Math.abs(x);
+  y = Math.abs(y);
+  if (x === 0) return y;
+  if (y === 0) return x;
+  const [xx, xxError] = twoProduct(x, x);
+  const [yy, yyError] = twoProduct(y, y);
+  const sum = xx + yy;
+  const virtual = sum - xx;
+  const sumError = (xx - (sum - virtual)) + (yy - virtual);
+  const low = sumError + xxError + yyError;
+  let root = Math.sqrt(sum + low);
+  const [square, squareError] = twoProduct(root, root);
+  const residual = ((sum - square) - squareError) + low;
+  root += residual / (2 * root);
+  return root;
+}
+
+/** `sum()` of floats (Python 3.12+ uses Neumaier's compensated summation). */
+function pySum(values: number[]): number {
+  let total = 0;
+  let compensation = 0;
+  for (const value of values) {
+    const next = total + value;
+    if (Math.abs(total) >= Math.abs(value)) compensation += (total - next) + value;
+    else compensation += (value - next) + total;
+    total = next;
+  }
+  return total + compensation;
+}
+
+const degToRad = Math.PI / 180;
+const radToDeg = 180 / Math.PI;
+
+/** Python `repr()` of a string (used in argparse-style messages). */
+function pyRepr(text: string): string {
+  const quote = text.includes("'") && !text.includes('"') ? '"' : "'";
+  let body = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (ch === '\\') body += '\\\\';
+    else if (ch === quote) body += '\\' + ch;
+    else if (ch === '\n') body += '\\n';
+    else if (ch === '\r') body += '\\r';
+    else if (ch === '\t') body += '\\t';
+    else if (code < 0x20 || code === 0x7f) body += '\\x' + code.toString(16).padStart(2, '0');
+    else body += ch;
+  }
+  return quote + body + quote;
+}
+
+/** Python `format(value, 'g')`. */
+function formatG(value: number): string {
+  if (value === 0) return Object.is(value, -0) ? '-0' : '0';
+  if (!Number.isFinite(value)) return Number.isNaN(value) ? 'nan' : (value > 0 ? 'inf' : '-inf');
+  const exponential = value.toExponential(5);
+  const exponent = Number(exponential.slice(exponential.indexOf('e') + 1));
+  const trimZeros = (text: string): string => (text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text);
+  if (exponent < -4 || exponent >= 6) {
+    const mantissa = trimZeros(exponential.slice(0, exponential.indexOf('e')));
+    const sign = exponent < 0 ? '-' : '+';
+    return `${mantissa}e${sign}${String(Math.abs(exponent)).padStart(2, '0')}`;
+  }
+  return trimZeros(value.toFixed(5 - exponent));
+}
+
+/** Replaces Unicode decimal digits (e.g. full-width `３`) with ASCII ones, as Python's int()/float() accept them. */
+function asciiDigits(text: string): string {
+  let result = '';
+  for (const ch of text) {
+    if (/\p{Nd}/u.test(ch) && !/[0-9]/.test(ch)) {
+      // Decimal digit blocks are runs of whole 0-9 sequences.
+      let start = ch.codePointAt(0)!;
+      while (/\p{Nd}/u.test(String.fromCodePoint(start - 1))) start--;
+      result += String((ch.codePointAt(0)! - start) % 10);
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+
+const pyFloatRe = /^[+-]?(?:(?:[0-9](?:_?[0-9])*)?\.[0-9](?:_?[0-9])*|[0-9](?:_?[0-9])*\.?)(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/;
+const pyIntRe = /^[+-]?[0-9](?:_?[0-9])*$/;
+
+/** `parseFiniteFloat()`: float(text) when it is finite, otherwise null. */
+export function parseFiniteFloat(text: string): number | null {
+  const stripped = asciiDigits(pyStrip(text));
+  if (!pyFloatRe.test(stripped)) return null;
+  const value = Number(stripped.replace(/_/g, ''));
+  return Number.isFinite(value) ? value : null;
+}
+
+/** int(text), or null when Python would raise ValueError. */
+function parsePyInt(text: string): number | null {
+  const stripped = asciiDigits(pyStrip(text));
+  if (!pyIntRe.test(stripped)) return null;
+  return Number(stripped.replace(/_/g, ''));
+}
+
+/**
+ * Validates one numeric option the way the CLI does. Returns the parsed value,
+ * or the argparse error text (without the `argument --x: ` prefix).
+ */
+function parseNumericOption(name: NumericHeadingOptionName, text: string): { value: number } | { error: string } {
+  if (name === 'degree') {
+    const value = parseFiniteFloat(text);
+    return value === null ? { error: `数値でない値である: ${pyRepr(text)}` } : { value };
+  }
+  if (name === 'span') {
+    const value = parsePyInt(text);
+    return value === null || value < 1 ? { error: `1以上の整数を指定すること: ${pyRepr(text)}` } : { value };
+  }
+  const value = parseFiniteFloat(text);
+  return value === null || value <= 0 ? { error: `正の数を指定すること: ${pyRepr(text)}` } : { value };
+}
+
+/** True when the CLI accepts `value` for the option. */
+export function isValidHeadingOptionValue(name: string, value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  if (isNumericHeadingOption(name)) return 'value' in parseNumericOption(name, value);
+  return (optionOrder as readonly string[]).includes(name)
+    && (optionChoices[name as HeadingOptionName] as readonly string[]).includes(value);
+}
+
+/** True when the value has the same effect as leaving the option out. */
+function isDefaultOptionValue(name: HeadingOptionName, value: string): boolean {
+  if (value === defaultHeadingOptions[name]) return true;
+  if (name === 'degree') return parseFiniteFloat(value) === 0;
+  if (name === 'span') return parsePyInt(value) === 4;
+  return false;
+}
 
 // ---------------------------------------------------------------------------
-// Diagnostics
+// Warnings / errors
 // ---------------------------------------------------------------------------
 
 /** Collects warnings / errors (the same warning is reported only once). */
@@ -184,202 +415,206 @@ export class Diagnostics {
   }
 }
 
+/** Input condition violation of a diagram type (4.4). */
+class ConditionError extends Error {}
+
 // ---------------------------------------------------------------------------
-// Input parsing
+// Input parsing (4.1)
 // ---------------------------------------------------------------------------
 
-/** Parsed result of one heading line. */
-interface HeadingEntry {
-  lineNo: number;
-  rawLevel: number;
+/** Parsed content of one heading line. */
+interface ContentInfo {
   label: string | null;
-  lineStyle: string | null;
+  lineType: string | null;
   shape: string | null;
   text: string;
   color: string | null;
 }
 
-/** A node of the tree. */
-interface TreeNode {
-  entry: HeadingEntry;
+/** One heading line. */
+interface HeadingRecord {
+  lineNo: number;
   level: number;
-  children: TreeNode[];
-  parent: TreeNode | null;
-  nodeId: string;
-  label: string | null;
-  lineStyle: string | null;
-  shape: string | null;
-  text: string;
-  color: string | null;
-  lineNo: number;
+  info: ContentInfo;
 }
 
-/** Splits heading content into label / modifiers / text / colour (4.1). */
-function parseContent(content: string, lineNo: number, diag: Diagnostics): Omit<HeadingEntry, 'lineNo' | 'rawLevel'> {
-  let rest = stripRight(content);
-  let label: string | null = null;
+const emptyContent = (): ContentInfo => ({ label: null, lineType: null, shape: null, text: '', color: null });
+
+/** Splits heading content into label / colour / modifiers / text. */
+function parseContent(content: string, lineNo: number, diag: Diagnostics): ContentInfo {
+  const info = emptyContent();
+  let rest = stripBlank(content);
 
   // 1. Label
   if (rest.startsWith('|')) {
     const closeIndex = rest.indexOf('|', 1);
     if (closeIndex < 0) {
-      diag.warn(`${lineNo}行目: ラベルの閉じ "|" が無いため、"|" を含めて内容全体をテキストとして扱う`);
+      diag.warn(`line ${lineNo}: ラベルの閉じ "|" が無い。先頭の "|" を含めて内容全体をテキストとして扱う`);
+      info.text = rest;
+      return info;
+    }
+    const labelText = stripBlank(rest.slice(1, closeIndex));
+    rest = stripBlank(rest.slice(closeIndex + 1));
+    if (labelText === '') {
+      diag.warn(`line ${lineNo}: ラベルが空である。ラベル無しとして扱う`);
     } else {
-      const labelText = stripBoth(rest.slice(1, closeIndex));
-      if (labelText === '') {
-        diag.warn(`${lineNo}行目: ラベルが空（||）のため、ラベル無しとして扱う`);
-      } else {
-        label = labelText;
-      }
-      rest = stripLeft(rest.slice(closeIndex + 1));
+      info.label = labelText;
     }
   }
 
   // 2. Colour
-  let color: string | null = null;
   const colorMatch = colorRe.exec(rest);
   if (colorMatch) {
-    rest = colorMatch[1];
-    color = colorMatch[2];
-  } else if (badColorRe.test(rest)) {
-    diag.warn(`${lineNo}行目: 色の指定 ":#..." が16進3桁または6桁ではない（書き間違いの可能性）。テキストの一部として扱う`);
+    info.color = '#' + colorMatch[1];
+    rest = rest.slice(0, colorMatch.index);
+  } else if (colorTypoRe.test(rest)) {
+    diag.warn(`line ${lineNo}: ":#" の後が16進3桁・6桁でない（色の書き間違いの可能性）。テキストの一部として扱う`);
   }
 
   // 3. Modifiers (line style name / shape name)
-  let lineStyle: string | null = null;
-  let shape: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const modifierMatch = modifierRe.exec(rest);
     if (!modifierMatch) break;
     const name = modifierMatch[1];
     if (lineStyleNames.has(name)) {
-      if (lineStyle !== null) {
-        diag.warn(`${lineNo}行目: 線種名が2回指定されている。"${name};" はテキストの一部として扱う`);
+      if (info.lineType !== null) {
+        diag.warn(`line ${lineNo}: 線種名 "${name}" が重複している。テキストの一部として扱う`);
         break;
       }
-      lineStyle = lineStyleNames.get(name)!;
+      info.lineType = lineStyleNames.get(name)!;
     } else if (shapeNames.has(name)) {
-      if (shape !== null) {
-        diag.warn(`${lineNo}行目: 形状名が2回指定されている。"${name};" はテキストの一部として扱う`);
+      if (info.shape !== null) {
+        diag.warn(`line ${lineNo}: 形状名 "${name}" が重複している。テキストの一部として扱う`);
         break;
       }
-      shape = shapeNames.get(name)!;
+      info.shape = shapeNames.get(name)!;
     } else {
-      diag.warn(`${lineNo}行目: "${name};" は既知の線種名・形状名ではない（書き間違いの可能性）。テキストの一部として扱う`);
+      diag.warn(`line ${lineNo}: "${name};" は未知の線種名・形状名である（書き間違いの可能性）。テキストの一部として扱う`);
       break;
     }
     rest = stripLeft(rest.slice(modifierMatch[0].length));
   }
 
   // 4. Text
-  const text = stripBoth(rest);
-  return { label, lineStyle, shape, text, color };
+  info.text = stripBlank(rest);
+  return info;
 }
 
-/** Parses the whole input and returns the list of heading lines. */
-function parseInput(sourceText: string, diag: Diagnostics): HeadingEntry[] {
-  const entries: HeadingEntry[] = [];
-  const rawLines = sourceText.split('\n');
-  for (let index = 0; index < rawLines.length; index++) {
+/** Parses every input line and returns the heading lines. */
+function parseLines(lines: string[], diag: Diagnostics): HeadingRecord[] {
+  const records: HeadingRecord[] = [];
+  lines.forEach((rawLine, index) => {
     const lineNo = index + 1;
-    const line = rawLines[index].replace(/\r+$/, '');
-    if (stripBoth(line) === '') continue;
+    const line = rawLine.replace(/[\r\n]+$/, '');
     const headingMatch = headingRe.exec(line);
-    if (headingMatch === null) {
-      if (headingTypoRe.test(line)) {
-        diag.warn(`${lineNo}行目: "#" の直後に空白が無い（見出し行の書き間違いの可能性）。この行を無視する`);
-      } else {
-        diag.warn(`${lineNo}行目: 見出し行でも空行でもない行を無視する`);
-      }
-      continue;
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const content = headingMatch[2];
+      const info = content === undefined || stripBlank(content) === ''
+        ? emptyContent()
+        : parseContent(content, lineNo, diag);
+      records.push({ lineNo, level, info });
+    } else if (pyStrip(line) === '') {
+      // blank line
+    } else if (headingTypoRe.test(line)) {
+      diag.warn(`line ${lineNo}: "#" の直後に空白が無い（見出し行の書き間違いの可能性）。無視する`);
+    } else {
+      diag.warn(`line ${lineNo}: 見出し行でも空行でもない行である。無視する`);
     }
-    const rawLevel = headingMatch[1].length;
-    const content = headingMatch[2] || '';
-    entries.push({ lineNo, rawLevel, ...parseContent(content, lineNo, diag) });
+  });
+  return records;
+}
+
+// ---------------------------------------------------------------------------
+// Tree (4.2, 5.1)
+// ---------------------------------------------------------------------------
+
+/** A node of the tree. */
+interface TreeNode {
+  label: string | null;
+  lineType: string | null;
+  shape: string | null;
+  text: string;
+  color: string | null;
+  level: number;
+  lineNo: number;
+  children: TreeNode[];
+  parent: TreeNode | null;
+  nodeId: string;
+}
+
+/** A forest of nodes (there may be several roots). */
+class Tree {
+  constructor(readonly roots: TreeNode[]) {}
+
+  /** Every node depth-first (in order of appearance). */
+  allNodes(): TreeNode[] {
+    const result: TreeNode[] = [];
+    const stack = [...this.roots].reverse();
+    while (stack.length) {
+      const node = stack.pop()!;
+      result.push(node);
+      for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i]);
+    }
+    return result;
   }
-  return entries;
+
+  maxLevel(): number {
+    return this.allNodes().reduce((max, node) => Math.max(max, node.level), 0);
+  }
+
+  nodesAtLevel(level: number): TreeNode[] {
+    return this.allNodes().filter(node => node.level === level);
+  }
 }
 
-/** Assigns node ids (5.1). */
-function assignNodeIds(roots: TreeNode[]): void {
-  const assign = (node: TreeNode, nodeId: string) => {
-    node.nodeId = nodeId;
-    node.children.forEach((child, childIndex) => assign(child, `${nodeId}_${childIndex + 1}`));
-  };
-  roots.forEach((root, rootIndex) => assign(root, `N${rootIndex + 1}`));
+function assignIds(nodes: TreeNode[], prefix: string): void {
+  nodes.forEach((node, index) => {
+    node.nodeId = prefix === 'N' ? `${prefix}${index + 1}` : `${prefix}_${index + 1}`;
+    assignIds(node.children, node.nodeId);
+  });
 }
 
-/** Builds the tree from the heading lines (4.2). */
-function buildTree(entries: HeadingEntry[], includeEmpty: boolean, diag: Diagnostics): TreeNode[] {
+/** Builds the tree. `includeEmpty` = true gives the tree used by the table types. */
+function buildTree(records: HeadingRecord[], includeEmpty: boolean, diag: Diagnostics): Tree {
   const roots: TreeNode[] = [];
   const stack: TreeNode[] = [];
   let prevLevel = 0;
-  for (const entry of entries) {
-    if (entry.text === '' && !includeEmpty) continue;
-    const level = entry.rawLevel;
-    let effectiveLevel: number;
+  for (const record of records) {
+    if (record.info.text === '' && !includeEmpty) continue;
+    let level = record.level;
     if (level > prevLevel + 1) {
-      effectiveLevel = prevLevel + 1;
-      if (prevLevel === 0) {
-        diag.warn(`${entry.lineNo}行目: 先頭の見出し行のレベルが${level}である（レベル飛び）。ルート（レベル1）として扱う`);
-      } else {
-        diag.warn(`${entry.lineNo}行目: レベル飛び（直前の見出し行のレベル${prevLevel}に対してレベル${level}）。`
-          + `直前の見出し行の節の子（レベル${effectiveLevel}）として扱う`);
-      }
-    } else {
-      effectiveLevel = level;
+      const effectiveLevel = prevLevel + 1;
+      diag.warn(`line ${record.lineNo}: レベル飛び（レベル${level}、直前の見出しはレベル${prevLevel}）。`
+        + `レベル${effectiveLevel}として扱う`);
+      level = effectiveLevel;
     }
+    const { info } = record;
     const node: TreeNode = {
-      entry,
-      level: effectiveLevel,
+      label: info.label,
+      lineType: info.lineType,
+      shape: info.shape,
+      text: info.text,
+      color: info.color,
+      level,
+      lineNo: record.lineNo,
       children: [],
       parent: null,
       nodeId: '',
-      label: entry.label,
-      lineStyle: entry.lineStyle,
-      shape: entry.shape,
-      text: entry.text,
-      color: entry.color,
-      lineNo: entry.lineNo,
     };
-    stack.length = effectiveLevel - 1;
-    if (effectiveLevel === 1) {
+    if (level === 1) {
       roots.push(node);
     } else {
-      const parent = stack[stack.length - 1];
+      const parent = stack[level - 2];
       parent.children.push(node);
       node.parent = parent;
     }
+    stack.length = level - 1;
     stack.push(node);
-    prevLevel = effectiveLevel;
+    prevLevel = level;
   }
-  assignNodeIds(roots);
-  return roots;
-}
-
-/** Lists every node depth-first (in order of appearance). */
-function walkDepthFirst(roots: TreeNode[]): TreeNode[] {
-  const result: TreeNode[] = [];
-  const visit = (node: TreeNode) => {
-    result.push(node);
-    node.children.forEach(visit);
-  };
-  roots.forEach(visit);
-  return result;
-}
-
-/** Lists parent/child pairs breadth-first (10.4). */
-function walkBreadthFirst(root: TreeNode): Array<[TreeNode, TreeNode]> {
-  const pairs: Array<[TreeNode, TreeNode]> = [];
-  const queue: TreeNode[] = [root];
-  for (let queueIndex = 0; queueIndex < queue.length; queueIndex++) {
-    const parent = queue[queueIndex];
-    for (const child of parent.children) {
-      pairs.push([parent, child]);
-      queue.push(child);
-    }
-  }
-  return pairs;
+  assignIds(roots, 'N');
+  return new Tree(roots);
 }
 
 // ---------------------------------------------------------------------------
@@ -390,65 +625,74 @@ function walkBreadthFirst(root: TreeNode): Array<[TreeNode, TreeNode]> {
 const quoteText = (text: string): string => text.split('"').join('#quot;');
 
 /** Mermaid node definition (4.3). */
-function shapeDefinition(node: TreeNode): string {
-  const [openBracket, closeBracket] = shapeBrackets[node.shape || 'rect'];
-  return `${node.nodeId}${openBracket}"${quoteText(node.text)}"${closeBracket}`;
+function mermaidNodeDef(node: TreeNode): string {
+  const [openMark, closeMark] = shapeBrackets[node.shape || 'rect'];
+  return `${node.nodeId}${openMark}"${quoteText(node.text)}"${closeMark}`;
 }
 
 /** `style` lines for colours and borderless nodes. */
-function styleLines(nodes: TreeNode[]): string[] {
-  const lines: string[] = [];
+function mermaidStyleLines(nodes: TreeNode[]): string[] {
+  const result: string[] = [];
   for (const node of nodes) {
     if (node.shape === 'borderless') {
-      if (node.color) lines.push(`style ${node.nodeId} fill:${node.color},stroke:none`);
-      else lines.push(`style ${node.nodeId} fill:none,stroke:none`);
+      if (node.color) result.push(`style ${node.nodeId} fill:${node.color},stroke:none`);
+      else result.push(`style ${node.nodeId} fill:none,stroke:none`);
     } else if (node.color) {
-      lines.push(`style ${node.nodeId} fill:${node.color}`);
+      result.push(`style ${node.nodeId} fill:${node.color}`);
     }
   }
-  return lines;
+  return result;
+}
+
+/** An edge of a block diagram (5.3, 5.4). */
+function blockEdge(sourceId: string, targetId: string, lineType: string, label: string | null, reverse: boolean): string {
+  let operator = blockSymbols[lineType];
+  if (reverse) operator = blockReverseSymbols[lineType] ?? operator;
+  if (label) return `${sourceId} -- "${quoteText(label)}" ${operator} ${targetId}`;
+  return `${sourceId} ${operator} ${targetId}`;
 }
 
 const spaceToken = (count: number): string => (count === 1 ? 'space' : `space:${count}`);
 
-/** Renders one grid row (10.1). */
-function renderGridRow(cells: Array<string | null>): string {
+/** Renders one grid row of `width` columns. `cells` maps column (1-based) -> node definition. */
+function renderGridRow(cells: Map<number, string>, width: number): string {
   const parts: string[] = [];
   let emptyRun = 0;
-  for (const cell of cells) {
-    if (cell === null) {
-      emptyRun += 1;
-    } else {
+  for (let col = 1; col <= width; col++) {
+    const cell = cells.get(col);
+    if (cell !== undefined) {
       if (emptyRun) {
         parts.push(spaceToken(emptyRun));
         emptyRun = 0;
       }
       parts.push(cell);
+    } else {
+      emptyRun += 1;
     }
   }
   if (emptyRun) parts.push(spaceToken(emptyRun));
   return parts.join(' ');
 }
 
-/** Level coordinates t(L) and T for the `tight` layout (10.1). */
-function tightCoordinates(nodes: TreeNode[], maxLevel: number): { levelCoord: number[]; tightTotal: number } {
-  const gapFlags: number[] = new Array(maxLevel + 1).fill(0);
-  for (const node of nodes) {
-    if (node.level >= 2 && node.label) gapFlags[node.level - 1] = 1;
+/** Parent -> child pairs, breadth-first (10.4). */
+function breadthFirstEdges(root: TreeNode): Array<[TreeNode, TreeNode]> {
+  const edges: Array<[TreeNode, TreeNode]> = [];
+  const queue: TreeNode[] = [root];
+  for (let index = 0; index < queue.length; index++) {
+    const parent = queue[index];
+    for (const child of parent.children) {
+      edges.push([parent, child]);
+      queue.push(child);
+    }
   }
-  const levelCoord: number[] = [0, 1];
-  for (let level = 1; level < maxLevel; level++) {
-    levelCoord[level + 1] = levelCoord[level] + 1 + gapFlags[level];
-  }
-  return { levelCoord, tightTotal: levelCoord[maxLevel] };
+  return edges;
 }
 
-/** An edge of a block diagram (5.3, 5.4). */
-function blockEdge(parentId: string, childId: string, lineStyle: string, label: string | null, reverse: boolean): string {
-  let symbol = blockSymbols[lineStyle];
-  if (reverse && lineStyle in blockReverseSymbols) symbol = blockReverseSymbols[lineStyle];
-  if (label) return `${parentId} -- "${quoteText(label)}" ${symbol} ${childId}`;
-  return `${parentId} ${symbol} ${childId}`;
+function requireSingleRoot(tree: Tree, typeId: string): TreeNode {
+  if (tree.roots.length !== 1) {
+    throw new ConditionError(`${typeId}: ルートがちょうど1個である必要がある（ルートが${tree.roots.length}個ある）`);
+  }
+  return tree.roots[0];
 }
 
 // East Asian Width "W"/"F" code point ranges (Unicode 15.1, as used by the
@@ -498,198 +742,125 @@ function displayWidth(text: string): number {
   return width;
 }
 
-/** Splits a pie slice "name:number"; null when it does not fit. */
-function parsePieText(text: string): [string, string] | null {
-  const colonIndex = text.lastIndexOf(':');
-  if (colonIndex < 0) return null;
-  const name = stripBoth(text.slice(0, colonIndex));
-  const value = stripBoth(text.slice(colonIndex + 1));
-  if (name === '' || !numberRe.test(value)) return null;
-  return [name, value];
+/** Estimated text width tw(s) for star (10.9.3). */
+function textPixelWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) width += isWide(ch.codePointAt(0)!) ? wideCharWidth : narrowCharWidth;
+  return width;
 }
 
-/** Splits a venn "name[:number]". */
-function parseVennText(text: string): [string, string | null] {
-  const colonIndex = text.lastIndexOf(':');
-  if (colonIndex >= 0) {
-    const value = stripBoth(text.slice(colonIndex + 1));
-    if (numberRe.test(value)) return [stripBoth(text.slice(0, colonIndex)), value];
+/** Level coordinates t(L) and T for the `tight` layout (10.1). */
+function tightLevelCoords(tree: Tree, maxDepth: number): { coords: number[]; total: number } {
+  const gapList: number[] = new Array(maxDepth + 1).fill(0);
+  for (const node of tree.allNodes()) {
+    if (node.level >= 2 && node.label) gapList[node.level - 1] = 1;
   }
-  return [stripBoth(text), null];
-}
-
-/** Coordinate notation for quadrant charts (9.1). */
-function formatCoordinate(hundredths: number): string {
-  const whole = Math.floor(hundredths / 100);
-  const fraction = hundredths % 100;
-  if (hundredths % 10 === 0) return `${whole}.${fraction / 10}`;
-  return `${whole}.${String(fraction).padStart(2, '0')}`;
+  const coords: number[] = new Array(maxDepth + 1).fill(0);
+  coords[1] = 1;
+  for (let level = 1; level < maxDepth; level++) {
+    coords[level + 1] = coords[level] + 1 + gapList[level];
+  }
+  return { coords, total: coords[maxDepth] };
 }
 
 // ---------------------------------------------------------------------------
-// Input conditions (4.4)
+// Run options
 // ---------------------------------------------------------------------------
 
-/** Checks the input condition; returns the violation text, or null when satisfied. */
-function checkCondition(typeId: string, mainRoots: TreeNode[], tableRoots: TreeNode[]): string | null {
-  if (typeId.startsWith('hier-') || typeId === 'fishBone') {
-    if (mainRoots.length !== 1) return `ルートがちょうど1個であること（ルートが${mainRoots.length}個ある）`;
-    return null;
+/** Effective options (defaults applied) plus the option strings given explicitly. */
+interface RunOptions {
+  direction: string;
+  layout: string;
+  line: string;
+  arrowDirection: string;
+  curve: string;
+  degreeValue: number;
+  spanValue: number;
+  radiusValue: number | null;
+  blockWidthValue: number | null;
+  givenOptions: ExplicitHeadingOptions;
+}
+
+function headingFor(opts: RunOptions, typeId: string): string {
+  const parts: string[] = [];
+  for (const name of meaningfulOptions[typeId] ?? []) {
+    const value = opts.givenOptions[name];
+    if (value !== undefined) parts.push(`${optionFlags[name]} ${value}`);
   }
-
-  if (tableTypeIds.includes(typeId)) {
-    if (tableRoots.length < 1) return 'ルートが1個以上であること';
-    if (Math.max(...walkDepthFirst(tableRoots).map(n => n.level)) > 2) {
-      return 'レベルが2以下であること（レベル3以上の節が存在する）';
-    }
-    return null;
-  }
-
-  if (typeId === 'struct-flow') {
-    if (mainRoots.length < 1) return 'ルートが1個以上であること';
-    return null;
-  }
-
-  const nodes = walkDepthFirst(mainRoots);
-
-  if (typeId === 'pie') {
-    if (mainRoots.length !== 1) return `ルートがちょうど1個であること（ルートが${mainRoots.length}個ある）`;
-    const slices = nodes.filter(n => n.level === 2);
-    if (!slices.length) return 'レベル2の節が1個以上であること';
-    if (nodes.some(n => n.level >= 3)) return 'レベル3以上の節が存在しないこと';
-    for (const node of slices) {
-      if (parsePieText(node.text) === null) {
-        return `レベル2の節が「名称:数値」形式であること（${node.lineNo}行目 "${node.text}"）`;
-      }
-    }
-    return null;
-  }
-
-  if (typeId === 'venn') {
-    if (nodes.some(n => n.level > 3)) return 'レベルが3以下であること（レベル4以上の節が存在する）';
-    const level1Count = nodes.filter(n => n.level === 1).length;
-    const level2Count = nodes.filter(n => n.level === 2).length;
-    const level3Count = nodes.filter(n => n.level === 3).length;
-    if (!(level1Count >= 1 && level1Count <= 3)) return `レベル1の節が1個以上3個以下であること（${level1Count}個ある）`;
-    if (level2Count > 3) return `レベル2の節が高々3個であること（${level2Count}個ある）`;
-    if (level3Count > 1) return `レベル3の節が高々1個であること（${level3Count}個ある）`;
-    let seenSets = 0;
-    let seenLevel2 = 0;
-    const requiredForLevel2 = [2, 3, 3];
-    for (const node of nodes) {
-      const [name] = parseVennText(node.text);
-      if (name === '') return `全節の名称が空でないこと（${node.lineNo}行目）`;
-      if (node.level === 1) {
-        seenSets += 1;
-      } else if (node.level === 2) {
-        seenLevel2 += 1;
-        if (seenSets < requiredForLevel2[seenLevel2 - 1]) {
-          return `対応集合の出現（${node.lineNo}行目の${seenLevel2}番目のレベル2の領域に必要な集合が`
-            + 'それより前に出現していない）';
-        }
-      } else if (seenSets < 3) {
-        return `対応集合の出現（${node.lineNo}行目のレベル3の領域に必要な集合 N1・N2・N3 がそれより前に出現していない）`;
-      }
-    }
-    return null;
-  }
-
-  if (typeId === 'quadrant') {
-    if (mainRoots.length !== 2) return `ルートがちょうど2個であること（ルートが${mainRoots.length}個ある）`;
-    if (nodes.some(n => n.level >= 4)) return 'レベル4以上の節が存在しないこと';
-    for (const root of mainRoots) {
-      if (root.children.length !== 2) {
-        return `レベル2の節が各ルートにちょうど2個であること（${root.lineNo}行目のルートに${root.children.length}個ある）`;
-      }
-      for (const child of root.children) {
-        if (!(child.children.length >= 1 && child.children.length <= 9)) {
-          return 'レベル3の節が各レベル2節に1個以上9個以下であること'
-            + `（${child.lineNo}行目の節に${child.children.length}個ある）`;
-        }
-      }
-    }
-    return null;
-  }
-
-  return null;
+  return `## ${typeId}` + (parts.length ? ` (${parts.join(' ')})` : '');
 }
 
 // ---------------------------------------------------------------------------
-// Per-type generators
+// 6.1 / 6.2 hier-mind / hier-mindlabel
 // ---------------------------------------------------------------------------
 
-/** hier-mind / hier-mindlabel (6.1, 6.2). */
-function generateMindmap(roots: TreeNode[], options: HeadingOptions, labelMode: boolean, typeId: string, diag: Diagnostics): string {
-  const root = roots[0];
-  const nodes = walkDepthFirst(roots);
+function generateMindmap(tree: Tree, opts: RunOptions, typeId: string, withLabel: boolean, diag: Diagnostics): string[] {
+  const root = requireSingleRoot(tree, typeId);
+  const nodes = tree.allNodes();
 
-  if (nodes.some(n => n.shape !== null && n.shape !== 'borderless' && n.shape !== 'rounded')) {
-    diag.warn(`${typeId}: PlantUML mindmapでは枠の形状を表現できない（「無枠」「角丸」以外の形状指定を無視する）`);
-  }
-  if (nodes.some(n => n.lineStyle)) {
-    diag.warn(`${typeId}: PlantUML mindmapでは節ごとの線種を変更できない（線種名指定を無視する）`);
-  }
-
-  let direction = options.direction;
+  let direction = opts.direction;
   if (direction === 'BT') {
-    diag.warn(`${typeId}: PlantUML mindmapでは方向 BT はサポートされていないため、TB として扱う`);
+    diag.warn(`${typeId}: PlantUML mindmapでは --direction BT はサポートされていない。TB として扱う`);
     direction = 'TB';
   }
-  const directionLine = ({
-    TB: 'top to bottom direction', TD: 'top to bottom direction',
-    LR: 'left to right direction', RL: 'right to left direction',
-  } as Record<string, string>)[direction];
+  if (direction === 'TD') direction = 'TB';
 
-  let lineStyle = options.line;
+  let lineStyle = opts.line;
   if (lineStyle.endsWith('Arrow')) {
-    const plainStyle = lineStyle.slice(0, -'Arrow'.length);
-    diag.warn(`${typeId}: PlantUML mindmapでは矢印を付けられないため、--line ${lineStyle} を ${plainStyle} として扱う`);
-    lineStyle = plainStyle;
+    diag.warn(`${typeId}: PlantUML mindmapでは矢印を付けられない。--line ${lineStyle} を `
+      + `${lineStyle.slice(0, -5)} として扱う`);
+    lineStyle = lineStyle.slice(0, -5);
   }
 
-  const layout = options.layout;
+  if (nodes.some(node => node.shape !== null && node.shape !== 'borderless' && node.shape !== 'rounded')) {
+    diag.warn(`${typeId}: PlantUML mindmapでは枠の形状を表現できない。形状の指定を無視する`);
+  }
+  if (nodes.some(node => node.lineType !== null)) {
+    diag.warn(`${typeId}: PlantUML mindmapでは節ごとの線種を変更できない。線種名の指定を無視する`);
+  }
+  if (withLabel && root.label) {
+    diag.warn(`line ${root.lineNo}: ${typeId}: ルートのラベルは無視する`);
+  }
+
   let padding: number;
   let margin: number;
-  if (layout === 'tight') [padding, margin] = [3, 2];
-  else if (layout === 'normal') [padding, margin] = [3, 5];
+  if (opts.layout === 'tight') [padding, margin] = [3, 2];
+  else if (opts.layout === 'normal') [padding, margin] = [3, 5];
   else [padding, margin] = [5, 10];
 
   const out = ['@startmindmap', '<style>', 'mindmapDiagram {',
     '  node {', '    RoundCorner 0', `    Padding ${padding}`, `    Margin ${margin}`, '  }'];
   for (const node of nodes) {
-    const isRounded = node.shape === 'rounded';
-    if (node.color || isRounded) {
+    if (node.shape === 'rounded' || node.color) {
       out.push(`  .${node.nodeId}Node {`);
-      if (isRounded) out.push('    RoundCorner 8');
+      if (node.shape === 'rounded') out.push('    RoundCorner 8');
       if (node.color) out.push(`    BackgroundColor ${node.color}`);
       out.push('  }');
     }
   }
   if (lineStyle === 'dotted') out.push('  arrow {', '    LineStyle 2-2', '  }');
   else if (lineStyle === 'thick') out.push('  arrow {', '    LineThickness 4', '  }');
-  out.push('}', '</style>', directionLine);
+  out.push('}', '</style>');
+  out.push(({
+    TB: 'top to bottom direction', LR: 'left to right direction', RL: 'right to left direction',
+  } as Record<string, string>)[direction]);
 
-  if (labelMode && root.label) {
-    diag.warn(`${typeId}: ${root.lineNo}行目: ルートのラベル "${root.label}" は無視する`);
-  }
+  let altLabel: string;
+  if (direction === 'TB') altLabel = lineStyle === 'dotted' ? ':' : '|';
+  else altLabel = lineStyle === 'dotted' ? '…' : '-';
 
-  const isVertical = direction === 'TB' || direction === 'TD';
-  const alternativeLabel = lineStyle === 'dotted'
-    ? (isVertical ? ':' : '\u2026')
-    : (isVertical ? '|' : '-');
-
-  const nodeLine = (node: TreeNode, depth: number): string => {
-    const marker = '*'.repeat(depth) + (node.shape === 'borderless' ? '_' : '');
-    const suffix = (node.color || node.shape === 'rounded') ? ` <<${node.nodeId}Node>>` : '';
-    return `${marker} ${node.text}${suffix}`;
+  const bodyLine = (node: TreeNode, depth: number): string => {
+    const mark = '*'.repeat(depth) + (node.shape === 'borderless' ? '_' : '');
+    const suffix = (node.shape === 'rounded' || node.color) ? ` <<${node.nodeId}Node>>` : '';
+    return `${mark} ${node.text}${suffix}`;
   };
 
   const emit = (node: TreeNode, depth: number): void => {
-    out.push(nodeLine(node, depth));
-    const groupHasLabel = labelMode && node.children.some(child => child.label);
+    out.push(bodyLine(node, depth));
+    const hasLabel = withLabel && node.children.some(child => child.label);
     for (const child of node.children) {
-      if (groupHasLabel) {
-        out.push('*'.repeat(depth + 1) + '_ ' + (child.label || alternativeLabel));
+      if (hasLabel) {
+        out.push('*'.repeat(depth + 1) + '_ ' + (child.label ? child.label : altLabel));
         emit(child, depth + 2);
       } else {
         emit(child, depth + 1);
@@ -699,401 +870,696 @@ function generateMindmap(roots: TreeNode[], options: HeadingOptions, labelMode: 
 
   emit(root, 1);
   out.push('@endmindmap');
-  return out.join('\n');
+  return out;
 }
 
-/** hier-flow (6.3). */
-function generateFlowchart(roots: TreeNode[], options: HeadingOptions): string {
-  const root = roots[0];
-  const direction = options.direction;
-  const reverse = options.arrowDirection === 'reverse';
-  const isVertical = direction === 'TB' || direction === 'TD' || direction === 'BT';
+// ---------------------------------------------------------------------------
+// 6.3 hier-flow
+// ---------------------------------------------------------------------------
+
+function generateHierFlow(tree: Tree, opts: RunOptions): string[] {
+  const root = requireSingleRoot(tree, 'hier-flow');
+  const reverse = opts.arrowDirection === 'reverse';
+  const flowDirection = reverse ? reverseDirection[opts.direction] : opts.direction;
+  const isHorizontal = opts.direction === 'LR' || opts.direction === 'RL';
 
   let padding = 8;
   let nodeSpacing = 30;
   let rankSpacing = 30;
-  const layout = options.layout;
+  const layout = opts.layout;
   if (layout === 'tight') {
     nodeSpacing = rankSpacing = 15;
   } else if (layout === 'spacyXY') {
     nodeSpacing = rankSpacing = 50;
   } else if (layout === 'spacyX') {
-    if (isVertical) nodeSpacing = 50;
-    else rankSpacing = 50;
-  } else if (layout === 'spacyY') {
-    if (isVertical) rankSpacing = 50;
+    if (isHorizontal) rankSpacing = 50;
     else nodeSpacing = 50;
+  } else if (layout === 'spacyY') {
+    if (isHorizontal) nodeSpacing = 50;
+    else rankSpacing = 50;
   } else if (layout === 'spacyPadding') {
     padding = 16;
   }
 
-  const out = ['---', 'config:', '  flowchart:', `    padding: ${padding}`,
-    `    nodeSpacing: ${nodeSpacing}`, `    rankSpacing: ${rankSpacing}`,
-    '    diagramPadding: 5', '---'];
-  if (options.curve !== 'default') {
-    out.push('%%{init:{"flowchart":{"curve":"' + options.curve + '"}}}%%');
-  }
-  out.push('flowchart ' + (reverse ? reverseDirection[direction] : direction));
+  const out = ['---', 'config:', '  flowchart:', `    padding: ${padding}`, `    nodeSpacing: ${nodeSpacing}`,
+    `    rankSpacing: ${rankSpacing}`, '    diagramPadding: 5', '---'];
+  if (opts.curve !== 'default') out.push('%%{init:{"flowchart":{"curve":"' + opts.curve + '"}}}%%');
+  out.push('flowchart ' + flowDirection);
 
   const definedIds = new Set<string>();
   const reference = (node: TreeNode): string => {
     if (definedIds.has(node.nodeId)) return node.nodeId;
     definedIds.add(node.nodeId);
-    return shapeDefinition(node);
+    return mermaidNodeDef(node);
   };
 
-  const pairs = walkBreadthFirst(root);
-  if (!pairs.length) out.push(reference(root));
-  for (const [parent, child] of pairs) {
-    const symbol = flowSymbols[child.lineStyle || options.line];
-    const labelPart = child.label ? `|"${quoteText(child.label)}"|` : '';
-    let leftText: string;
-    let rightText: string;
-    if (reverse) {
-      leftText = reference(child);
-      rightText = reference(parent);
-    } else {
-      leftText = reference(parent);
-      rightText = reference(child);
-    }
-    if (labelPart) out.push(`${leftText} ${symbol} ${labelPart}${rightText}`);
-    else out.push(`${leftText} ${symbol} ${rightText}`);
+  const edges = breadthFirstEdges(root);
+  if (!edges.length) out.push(mermaidNodeDef(root));
+  for (const [parent, child] of edges) {
+    const operator = flowSymbols[child.lineType || opts.line];
+    const [left, right] = reverse ? [child, parent] : [parent, child];
+    const leftText = reference(left);
+    const rightText = reference(right);
+    if (child.label) out.push(`${leftText} ${operator} |"${quoteText(child.label)}"|${rightText}`);
+    else out.push(`${leftText} ${operator} ${rightText}`);
   }
 
-  const styles = styleLines(walkDepthFirst(roots));
+  const styles = mermaidStyleLines(tree.allNodes());
   if (styles.length) out.push('', ...styles);
-  return out.join('\n');
+  return out;
 }
 
-const blockFrontmatter = (): string[] => ['---', 'config:', '  block:', '    padding: 30', '---'];
+// ---------------------------------------------------------------------------
+// 6.4 / 10.2-10.4 hier-block
+// ---------------------------------------------------------------------------
 
-/** hier-block (6.4, 10.2-10.4). */
-function generateHierBlock(roots: TreeNode[], options: HeadingOptions): string {
-  const root = roots[0];
-  const nodes = walkDepthFirst(roots);
-  const maxLevel = Math.max(...nodes.map(n => n.level));
-  const layout = options.layout;
-  const direction = options.direction;
-  const reverse = options.arrowDirection === 'reverse';
-  const isSpacyX = layout === 'spacyX' || layout === 'spacyXY';
-  const isSpacyY = layout === 'spacyY' || layout === 'spacyXY';
-  const isTight = layout === 'tight';
-
-  // 10.2 Position
-  const positions = new Map<string, number>();
-  let leafCount = 0;
-  const assignPosition = (node: TreeNode): void => {
+/** Position decision of 10.2: node -> position, and the number of leaves. */
+function computeLeafPositions(root: TreeNode): { positions: Map<TreeNode, number>; leafCount: number } {
+  const positions = new Map<TreeNode, number>();
+  let leafCounter = 0;
+  const visit = (node: TreeNode): void => {
     if (!node.children.length) {
-      leafCount += 1;
-      positions.set(node.nodeId, leafCount);
+      leafCounter += 1;
+      positions.set(node, leafCounter);
       return;
     }
-    node.children.forEach(assignPosition);
-    const childPositions = node.children.map(c => positions.get(c.nodeId)!);
-    positions.set(node.nodeId, Math.floor((Math.min(...childPositions) + Math.max(...childPositions)) / 2));
+    node.children.forEach(visit);
+    const childPositions = node.children.map(child => positions.get(child)!);
+    positions.set(node, Math.floor((Math.min(...childPositions) + Math.max(...childPositions)) / 2));
   };
-  assignPosition(root);
-  const { levelCoord, tightTotal } = tightCoordinates(nodes, maxLevel);
-
-  // 10.3 Expansion onto the grid
-  const cellOf = new Map<string, [number, number]>();
-  let width: number;
-  let rowCount: number;
-  if (direction === 'TB' || direction === 'TD' || direction === 'BT') {
-    width = isSpacyX ? 2 * leafCount - 1 : leafCount;
-    if (isTight) rowCount = tightTotal;
-    else if (isSpacyY) rowCount = 3 * maxLevel - 2;
-    else rowCount = 2 * maxLevel - 1;
-    for (const node of nodes) {
-      const position = positions.get(node.nodeId)!;
-      const column = isSpacyX ? 2 * position - 1 : position;
-      let row: number;
-      if (isTight) row = levelCoord[node.level];
-      else if (isSpacyY) row = 3 * node.level - 2;
-      else row = 2 * node.level - 1;
-      if (direction === 'BT') row = rowCount + 1 - row;
-      cellOf.set(node.nodeId, [row, column]);
-    }
-  } else {
-    if (isTight) width = tightTotal;
-    else if (isSpacyX) width = 3 * maxLevel - 2;
-    else width = 2 * maxLevel - 1;
-    rowCount = isSpacyY ? 2 * leafCount - 1 : leafCount;
-    for (const node of nodes) {
-      const position = positions.get(node.nodeId)!;
-      let column: number;
-      if (isTight) column = levelCoord[node.level];
-      else if (isSpacyX) column = 3 * node.level - 2;
-      else column = 2 * node.level - 1;
-      if (direction === 'RL') column = width + 1 - column;
-      const row = isSpacyY ? 2 * position - 1 : position;
-      cellOf.set(node.nodeId, [row, column]);
-    }
-  }
-
-  const grid: Array<Array<string | null>> = Array.from({ length: rowCount }, () => new Array(width).fill(null));
-  for (const node of nodes) {
-    const [row, column] = cellOf.get(node.nodeId)!;
-    grid[row - 1][column - 1] = shapeDefinition(node);
-  }
-
-  const out: string[] = [];
-  if (layout === 'spacyPadding') out.push(...blockFrontmatter());
-  out.push('block', `columns ${width}`);
-  out.push(...grid.map(renderGridRow));
-
-  // 10.4 Edge order
-  const edges = walkBreadthFirst(root).map(([parent, child]) =>
-    blockEdge(parent.nodeId, child.nodeId, child.lineStyle || options.line, child.label, reverse));
-  if (edges.length) out.push('', ...edges);
-  const styles = styleLines(nodes);
-  if (styles.length) out.push('', ...styles);
-  return out.join('\n');
+  visit(root);
+  return { positions, leafCount: leafCounter };
 }
 
-/** struct-flow (10.5-10.6). */
-function generateStructFlow(roots: TreeNode[], options: HeadingOptions): string {
-  const nodes = walkDepthFirst(roots);
-  const maxLevel = Math.max(...nodes.map(n => n.level));
-  const layout = options.layout;
+function setGridCell(grid: Map<number, Map<number, string>>, row: number, col: number, value: string): void {
+  let cells = grid.get(row);
+  if (!cells) {
+    cells = new Map();
+    grid.set(row, cells);
+  }
+  cells.set(col, value);
+}
+
+function generateHierBlock(tree: Tree, opts: RunOptions): string[] {
+  const root = requireSingleRoot(tree, 'hier-block');
+  const direction = opts.direction === 'TD' ? 'TB' : opts.direction;
+  const layout = opts.layout;
+  const isTight = layout === 'tight';
   const isSpacyX = layout === 'spacyX' || layout === 'spacyXY';
   const isSpacyY = layout === 'spacyY' || layout === 'spacyXY';
-  const { levelCoord, tightTotal } = tightCoordinates(nodes, maxLevel);
 
+  const { positions, leafCount } = computeLeafPositions(root);
+  const maxDepth = tree.maxLevel();
+  const { coords: tightCoords, total: tightTotal } = tightLevelCoords(tree, maxDepth);
+  const nodes = tree.allNodes();
+
+  const grid = new Map<number, Map<number, string>>();
   let width: number;
-  if (layout === 'tight') width = tightTotal;
-  else if (isSpacyX) width = 3 * maxLevel - 2;
-  else width = 2 * maxLevel - 1;
-
-  const columnOf = (node: TreeNode): number => {
-    if (layout === 'tight') return levelCoord[node.level];
-    if (isSpacyX) return 3 * node.level - 2;
-    return 2 * node.level - 1;
-  };
-
-  // Row assignment (one group per root)
-  const groups: string[][] = [];
-  for (const root of roots) {
-    const groupRows: Array<Array<string | null>> = [];
-    const place = (node: TreeNode, rowIndexIn: number | null): void => {
-      let rowIndex = rowIndexIn;
-      if (rowIndex === null) {
-        groupRows.push(new Array(width).fill(null));
-        rowIndex = groupRows.length - 1;
-      }
-      groupRows[rowIndex][columnOf(node) - 1] = shapeDefinition(node);
-      const ownRow = rowIndex;
-      node.children.forEach((child, childIndex) => place(child, childIndex === 0 ? ownRow : null));
-    };
-    place(root, null);
-    groups.push(groupRows.map(renderGridRow));
+  let rowCount: number;
+  if (direction === 'TB' || direction === 'BT') {
+    let colOf: (p: number) => number;
+    let rowOfLevel: (level: number) => number;
+    if (isSpacyX) {
+      width = 2 * leafCount - 1;
+      colOf = p => 2 * p - 1;
+    } else {
+      width = leafCount;
+      colOf = p => p;
+    }
+    if (isTight) {
+      rowOfLevel = level => tightCoords[level];
+      rowCount = tightTotal;
+    } else if (isSpacyY) {
+      rowOfLevel = level => 3 * level - 2;
+      rowCount = 3 * maxDepth - 2;
+    } else {
+      rowOfLevel = level => 2 * level - 1;
+      rowCount = 2 * maxDepth - 1;
+    }
+    for (const node of nodes) {
+      let row = rowOfLevel(node.level);
+      if (direction === 'BT') row = rowCount + 1 - row;
+      setGridCell(grid, row, colOf(positions.get(node)!), mermaidNodeDef(node));
+    }
+  } else {
+    let colOfLevel: (level: number) => number;
+    let rowOf: (p: number) => number;
+    if (isTight) {
+      colOfLevel = level => tightCoords[level];
+      width = tightTotal;
+    } else if (isSpacyX) {
+      colOfLevel = level => 3 * level - 2;
+      width = 3 * maxDepth - 2;
+    } else {
+      colOfLevel = level => 2 * level - 1;
+      width = 2 * maxDepth - 1;
+    }
+    if (isSpacyY) {
+      rowOf = p => 2 * p - 1;
+      rowCount = 2 * leafCount - 1;
+    } else {
+      rowOf = p => p;
+      rowCount = leafCount;
+    }
+    for (const node of nodes) {
+      let col = colOfLevel(node.level);
+      if (direction === 'RL') col = width + 1 - col;
+      setGridCell(grid, rowOf(positions.get(node)!), col, mermaidNodeDef(node));
+    }
   }
 
   const out: string[] = [];
-  if (layout === 'spacyPadding') out.push(...blockFrontmatter());
+  if (layout === 'spacyPadding') out.push(...blockPaddingFrontmatter);
   out.push('block', `columns ${width}`);
-  const blankRow = spaceToken(width);
-  groups.forEach((groupRows, groupIndex) => {
-    if (groupIndex > 0) {
-      out.push('');
-      if (isSpacyY) out.push(blankRow);
-    }
-    groupRows.forEach((rowText, rowIndex) => {
-      if (rowIndex > 0 && isSpacyY) out.push(blankRow);
-      out.push(rowText);
-    });
-  });
+  for (let row = 1; row <= rowCount; row++) {
+    out.push(renderGridRow(grid.get(row) ?? new Map(), width));
+  }
 
-  // 10.6 Edges
-  const defaultLine = options.line;
-  const subtreeEdges = (node: TreeNode, edgeList: string[]): void => {
-    node.children.forEach((child, childIndex) => {
-      const lineStyle = child.lineStyle || defaultLine;
-      if (child.label) {
-        edgeList.push(blockEdge(node.nodeId, child.nodeId, lineStyle, child.label, false));
-      } else if (childIndex === 0) {
-        edgeList.push(blockEdge(node.nodeId, child.nodeId, lineStyle, null, false));
-      } else {
-        const previous = node.children[childIndex - 1];
-        edgeList.push(blockEdge(previous.nodeId, child.nodeId, lineStyle, null, false));
-      }
-      subtreeEdges(child, edgeList);
-    });
-  };
-
-  const edgeGroups: string[][] = [];
-  roots.forEach((root, rootIndex) => {
-    const edgeList: string[] = [];
-    if (rootIndex > 0) {
-      const previousRoot = roots[rootIndex - 1];
-      edgeList.push(blockEdge(previousRoot.nodeId, root.nodeId, root.lineStyle || defaultLine, null, false));
-    }
-    subtreeEdges(root, edgeList);
-    if (edgeList.length) edgeGroups.push(edgeList);
-  });
-  for (const edgeList of edgeGroups) out.push('', ...edgeList);
-
-  const styles = styleLines(nodes);
+  const reverse = opts.arrowDirection === 'reverse';
+  const edgeLines = breadthFirstEdges(root).map(([parent, child]) =>
+    blockEdge(parent.nodeId, child.nodeId, child.lineType || opts.line, child.label, reverse));
+  if (edgeLines.length) out.push('', ...edgeLines);
+  const styles = mermaidStyleLines(nodes);
   if (styles.length) out.push('', ...styles);
-  return out.join('\n');
+  return out;
 }
 
-/** fishBone (chapter 7). */
-function generateFishBone(roots: TreeNode[]): string {
+// ---------------------------------------------------------------------------
+// 7 fishBone
+// ---------------------------------------------------------------------------
+
+function generateFishBone(tree: Tree): string[] {
+  requireSingleRoot(tree, 'fishBone');
   const out = ['ishikawa-beta'];
-  for (const node of walkDepthFirst(roots)) out.push(' '.repeat(2 * node.level) + node.text);
-  return out.join('\n');
+  for (const node of tree.allNodes()) out.push(' '.repeat(2 * node.level) + node.text);
+  return out;
 }
 
-/** pie (8.1). */
-function generatePie(roots: TreeNode[], diag: Diagnostics): string {
-  const root = roots[0];
-  const slices = root.children.map((child) => {
-    const [name, value] = parsePieText(child.text)!;
-    return { name, value, color: child.color };
-  });
+// ---------------------------------------------------------------------------
+// 8.1 pie
+// ---------------------------------------------------------------------------
+
+/** Splits "name:number"; null when it does not fit. */
+function parsePieSlice(text: string): [string, string] | null {
+  const colonIndex = text.lastIndexOf(':');
+  if (colonIndex < 0) return null;
+  const name = stripBlank(text.slice(0, colonIndex));
+  const value = stripBlank(text.slice(colonIndex + 1));
+  if (name === '' || !numberRe.test(value)) return null;
+  return [name, value];
+}
+
+function generatePie(tree: Tree, diag: Diagnostics): string[] {
+  const root = requireSingleRoot(tree, 'pie');
+  if (!root.children.length) throw new ConditionError('pie: レベル2の節が1個以上必要である');
+  if (tree.maxLevel() > 2) throw new ConditionError('pie: レベル3以上の節が存在してはならない');
+  const slices: Array<[string, string, string | null]> = [];
+  for (const child of root.children) {
+    const parsed = parsePieSlice(child.text);
+    if (parsed === null) {
+      throw new ConditionError(`pie: line ${child.lineNo}: レベル2の節が「名称:数値」形式でない（"${child.text}"）`);
+    }
+    slices.push([parsed[0], parsed[1], child.color]);
+  }
   if (slices.length >= 13) {
-    diag.warn(`pie: スライスが${slices.length}個ある（Mermaidのテーマ変数は pie1〜pie12 まで）。`
+    diag.warn(`pie: スライスが${slices.length}個ある。Mermaidのテーマ変数は pie1〜pie12 までのため、`
       + '13個目以降の色指定は無視する');
   }
+
   const themeItems: string[] = [];
-  slices.slice(0, 12).forEach((slice, sliceIndex) => {
-    if (slice.color) themeItems.push(`"pie${sliceIndex + 1}":"${slice.color}"`);
+  slices.forEach(([, , color], index) => {
+    if (color && index + 1 <= 12) themeItems.push(`"pie${index + 1}":"${color}"`);
   });
   themeItems.push('"pieOpacity":1');
+
   const out = ['%%{init: {"theme":"base","themeVariables":{'];
-  themeItems.forEach((item, itemIndex) => {
-    out.push('  ' + item + (itemIndex < themeItems.length - 1 ? ',' : ''));
-  });
+  themeItems.forEach((item, index) => out.push('  ' + item + (index < themeItems.length - 1 ? ',' : '')));
   out.push('}}}%%');
-  out.push('pie showData');
-  out.push(`title ${root.text}`);
-  for (const slice of slices) out.push(`"${quoteText(slice.name)}" : ${slice.value}`);
-  return out.join('\n');
+  out.push('pie showData', `title ${root.text}`);
+  for (const [name, value] of slices) out.push(`"${quoteText(name)}" : ${value}`);
+  return out;
 }
 
-/** venn (8.2). */
-function generateVenn(roots: TreeNode[]): string {
-  const level2Sets = ['N1,N2', 'N1,N3', 'N2,N3'];
-  const out = ['venn-beta'];
-  const styles: string[] = [];
-  let level1Count = 0;
-  let level2Count = 0;
-  for (const node of walkDepthFirst(roots)) {
-    const [name, value] = parseVennText(node.text);
-    const valuePart = value !== null ? `:${value}` : '';
+// ---------------------------------------------------------------------------
+// 8.2 venn
+// ---------------------------------------------------------------------------
+
+const vennLevel2Sets: ReadonlyArray<readonly number[]> = [[1, 2], [1, 3], [2, 3]];
+
+function parseVennName(text: string): [string, string | null] {
+  const colonIndex = text.lastIndexOf(':');
+  if (colonIndex >= 0) {
+    const value = stripBlank(text.slice(colonIndex + 1));
+    if (numberRe.test(value)) return [stripBlank(text.slice(0, colonIndex)), value];
+  }
+  return [text, null];
+}
+
+function generateVenn(tree: Tree): string[] {
+  const nodes = tree.allNodes();
+  if (tree.maxLevel() > 3) throw new ConditionError('venn: レベルは3以下である必要がある');
+  const level1Count = tree.nodesAtLevel(1).length;
+  const level2Count = tree.nodesAtLevel(2).length;
+  const level3Count = tree.nodesAtLevel(3).length;
+  if (!(level1Count >= 1 && level1Count <= 3)) {
+    throw new ConditionError(`venn: レベル1は1個以上3個以下である必要がある（${level1Count}個ある）`);
+  }
+  if (level2Count > 3) throw new ConditionError(`venn: レベル2は高々3個である必要がある（${level2Count}個ある）`);
+  if (level3Count > 1) throw new ConditionError(`venn: レベル3は高々1個である必要がある（${level3Count}個ある）`);
+
+  const bodyLines: string[] = [];
+  const styleLines: string[] = [];
+  let setsSeen = 0;
+  let level2Seen = 0;
+  for (const node of nodes) {
+    const [name, value] = parseVennName(node.text);
+    if (name === '') throw new ConditionError(`venn: line ${node.lineNo}: 名称が空である`);
     let region: string;
+    let line: string;
     if (node.level === 1) {
-      level1Count += 1;
-      region = `N${level1Count}`;
-      out.push(`  set ${region}["${quoteText(name)}"]${valuePart}`);
+      setsSeen += 1;
+      region = `N${setsSeen}`;
+      line = `  set ${region}["${quoteText(name)}"]`;
     } else {
+      let required: readonly number[];
       if (node.level === 2) {
-        level2Count += 1;
-        region = level2Sets[level2Count - 1];
+        required = vennLevel2Sets[level2Seen];
+        level2Seen += 1;
       } else {
-        region = 'N1,N2,N3';
+        required = [1, 2, 3];
       }
-      out.push(`  union ${region}["${quoteText(name)}"]${valuePart}`);
+      if (Math.max(...required) > setsSeen) {
+        const needed = required.map(k => `N${k}`).join('・');
+        throw new ConditionError(`venn: line ${node.lineNo}: 領域 "${name}" に必要な集合（${needed}）が`
+          + 'それより前に出現していない');
+      }
+      region = required.map(k => `N${k}`).join(',');
+      line = `  union ${region}["${quoteText(name)}"]`;
     }
-    if (node.color) styles.push(`  style ${region} fill:${node.color}`);
+    if (value !== null) line += `:${value}`;
+    bodyLines.push(line);
+    if (node.color) styleLines.push(`  style ${region} fill:${node.color}`);
   }
-  if (styles.length) out.push('', ...styles);
-  return out.join('\n');
+
+  const out = ['venn-beta', ...bodyLines];
+  if (styleLines.length) out.push('', ...styleLines);
+  return out;
 }
 
-/** table family (8.3). */
-function generateTable(tableRoots: TreeNode[], typeId: string): string {
-  const suffix = typeId.slice('table'.length);
-  const boldColumn = /^[0-9]/.test(suffix) ? parseInt(suffix[0], 10) : null;
-  const isCentered = suffix.endsWith('c');
+// ---------------------------------------------------------------------------
+// 8.3 table types
+// ---------------------------------------------------------------------------
 
-  const rows: string[][] = [];
-  for (const root of tableRoots) {
-    const cells = [root.text, ...root.children.map(child => child.text)]
-      // 8.3.0 Empty cell replacement
-      .map(cell => (cell.replace(/[ \t]/g, '') === '' ? fullWidthSpace : cell));
-    rows.push(cells);
-  }
+const tableSettings: Record<string, [number | null, boolean]> = {
+  table: [null, false], tablec: [null, true],
+  table1: [1, false], table1c: [1, true],
+  table2: [2, false], table2c: [2, true],
+  table3: [3, false], table3c: [3, true],
+};
 
-  const columnWidths: number[] = [];
-  for (const cells of rows) {
-    cells.forEach((cell, columnIndex) => {
-      columnWidths[columnIndex] = Math.max(columnWidths[columnIndex] ?? 0, displayWidth(cell));
-    });
+function generateTable(tableTree: Tree, typeId: string): string[] {
+  if (!tableTree.roots.length) throw new ConditionError(`${typeId}: ルートが1個以上必要である`);
+  if (tableTree.maxLevel() > 2) throw new ConditionError(`${typeId}: レベル3以上の節が存在してはならない`);
+  const [boldColumn, centering] = tableSettings[typeId];
+
+  // 8.3.0 replace empty cells
+  const rows: string[][] = tableTree.roots.map(root =>
+    [root.text, ...root.children.map(child => child.text)].map(text =>
+      (text.split(' ').join('').split('\t').join('') === '' ? fullWidthSpace : text)));
+
+  const columnWidths = new Map<number, number>();
+  if (centering) {
+    for (const cells of rows) {
+      cells.forEach((text, colIndex) => {
+        columnWidths.set(colIndex, Math.max(columnWidths.get(colIndex) ?? 0, displayWidth(text)));
+      });
+    }
   }
 
   const out = ['@startsalt', '{#'];
   rows.forEach((cells, rowIndex) => {
-    const cellTexts = cells.map((cell, columnIndex) => {
-      let cellText = cell;
-      // 8.3.1 Bold
-      if (boldColumn !== null && (rowIndex === 0 || columnIndex + 1 === boldColumn)) {
-        cellText = `<b>${cellText}</b>`;
-      }
-      // 8.3.2 Centering
-      if (isCentered) {
-        const padWidth = columnWidths[columnIndex] - displayWidth(cell);
+    const cellStrings: string[] = [];
+    cells.forEach((text, colIndex) => {
+      let cellText = text;
+      // 8.3.1 bold
+      if (boldColumn !== null && (rowIndex === 0 || colIndex === boldColumn - 1)) cellText = `<b>${cellText}</b>`;
+      // 8.3.2 centring
+      if (centering) {
+        const padWidth = columnWidths.get(colIndex)! - displayWidth(text);
         const spaceCount = Math.floor(padWidth / 2);
         const leftCount = Math.floor(spaceCount / 2);
         let rightCount = spaceCount - leftCount;
-        if (columnIndex === cells.length - 1) rightCount = 0;
+        if (colIndex === cells.length - 1) rightCount = 0;
         cellText = fullWidthSpace.repeat(leftCount) + cellText + fullWidthSpace.repeat(rightCount);
       }
-      return cellText;
+      cellStrings.push(cellText);
     });
-    out.push('| ' + cellTexts.join(' | '));
+    out.push('| ' + cellStrings.join(' | '));
   });
   out.push('}', '@endsalt');
-  return out.join('\n');
+  return out;
 }
 
-/** quadrant (chapter 9). */
-function generateQuadrant(roots: TreeNode[]): string {
-  const [firstRoot, secondRoot] = roots;
-  const quadrantOf = new Map<string, number>([
-    [firstRoot.children[0].nodeId, 3],
-    [firstRoot.children[1].nodeId, 2],
-    [secondRoot.children[0].nodeId, 4],
-    [secondRoot.children[1].nodeId, 1],
-  ]);
-  const level2Nodes = [...firstRoot.children, ...secondRoot.children];
+// ---------------------------------------------------------------------------
+// 9 quadrant
+// ---------------------------------------------------------------------------
 
-  const fills = new Map<number, string>();
-  for (const node of level2Nodes) {
-    if (node.color) fills.set(quadrantOf.get(node.nodeId)!, node.color);
-  }
-  const out: string[] = [];
-  if (fills.size) {
-    out.push('---', 'config:', '  themeVariables:');
-    for (let quadrantNo = 1; quadrantNo <= 4; quadrantNo++) {
-      if (fills.has(quadrantNo)) out.push(`    quadrant${quadrantNo}Fill: "${fills.get(quadrantNo)}"`);
+/** A value with two decimals (given ×100 as an integer) in the notation of 9.1. */
+function formatHundredths(value: number): string {
+  const whole = Math.floor(value / 100);
+  const fraction = value % 100;
+  if (value % 10 === 0) return `${whole}.${Math.floor(fraction / 10)}`;
+  return `${whole}.${String(fraction).padStart(2, '0')}`;
+}
+
+function generateQuadrant(tree: Tree): string[] {
+  const roots = tree.roots;
+  if (roots.length !== 2) throw new ConditionError(`quadrant: ルートがちょうど2個である必要がある（${roots.length}個ある）`);
+  for (const root of roots) {
+    if (root.children.length !== 2) {
+      throw new ConditionError(`quadrant: レベル2の節が各ルートにちょうど2個必要である（"${root.text}" の子は`
+        + `${root.children.length}個）`);
     }
+    for (const child of root.children) {
+      if (!(child.children.length >= 1 && child.children.length <= 9)) {
+        throw new ConditionError(`quadrant: レベル3の節が各レベル2節に1個以上9個以下必要である（"${child.text}" の子は`
+          + `${child.children.length}個）`);
+      }
+    }
+  }
+  if (tree.maxLevel() > 3) throw new ConditionError('quadrant: レベル4以上の節が存在してはならない');
+
+  const [leftBottom, leftTop] = roots[0].children;
+  const [rightBottom, rightTop] = roots[1].children;
+  const quadrantNodes: Record<number, TreeNode> = { 1: rightTop, 2: leftTop, 3: leftBottom, 4: rightBottom };
+
+  const out: string[] = [];
+  const fills = [1, 2, 3, 4].filter(k => quadrantNodes[k].color).map(k => [k, quadrantNodes[k].color] as const);
+  if (fills.length) {
+    out.push('---', 'config:', '  themeVariables:');
+    for (const [k, color] of fills) out.push(`    quadrant${k}Fill: "${color}"`);
     out.push('---');
   }
-
   out.push('quadrantChart');
-  out.push(`  x-axis "${quoteText(firstRoot.text)}" --> "${quoteText(secondRoot.text)}"`);
-  out.push(`  y-axis "${quoteText(firstRoot.children[0].text)}" --> "${quoteText(firstRoot.children[1].text)}"`);
-
-  const labels = new Map<number, string>();
-  for (const node of level2Nodes) labels.set(quadrantOf.get(node.nodeId)!, node.children[0].text);
-  for (let quadrantNo = 1; quadrantNo <= 4; quadrantNo++) {
-    out.push(`  quadrant-${quadrantNo} "${quoteText(labels.get(quadrantNo)!)}"`);
-  }
-
+  out.push(`  x-axis "${quoteText(roots[0].text)}" --> "${quoteText(roots[1].text)}"`);
+  out.push(`  y-axis "${quoteText(leftBottom.text)}" --> "${quoteText(leftTop.text)}"`);
+  for (const k of [1, 2, 3, 4]) out.push(`  quadrant-${k} "${quoteText(quadrantNodes[k].children[0].text)}"`);
   roots.forEach((root, rootIndex) => {
     const xValue = rootIndex === 0 ? 25 : 75;
-    root.children.forEach((level2Node, childIndex) => {
+    root.children.forEach((child, childIndex) => {
       const baseY = childIndex === 0 ? 40 : 90;
-      level2Node.children.slice(1).forEach((pointNode, pointIndex) => {
-        const yValue = baseY - 5 * pointIndex;
-        out.push(`  "${quoteText(pointNode.text)}": `
-          + `[${formatCoordinate(xValue)}, ${formatCoordinate(yValue)}] radius:0`);
+      child.children.slice(1).forEach((point, offset) => {
+        const yValue = baseY - 5 * offset;
+        out.push(`  "${quoteText(point.text)}": [${formatHundredths(xValue)}, `
+          + `${formatHundredths(yValue)}] radius:0`);
       });
     });
   });
-  return out.join('\n');
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// 10.5-10.6 struct-flow
+// ---------------------------------------------------------------------------
+
+function generateStructFlow(tree: Tree, opts: RunOptions): string[] {
+  const roots = tree.roots;
+  if (!roots.length) throw new ConditionError('struct-flow: ルートが1個以上必要である');
+  const layout = opts.layout;
+  const maxDepth = tree.maxLevel();
+  const { coords: tightCoords, total: tightTotal } = tightLevelCoords(tree, maxDepth);
+  let colOfLevel: (level: number) => number;
+  let width: number;
+  if (layout === 'tight') {
+    colOfLevel = level => tightCoords[level];
+    width = tightTotal;
+  } else if (layout === 'spacyX' || layout === 'spacyXY') {
+    colOfLevel = level => 3 * level - 2;
+    width = 3 * maxDepth - 2;
+  } else {
+    colOfLevel = level => 2 * level - 1;
+    width = 2 * maxDepth - 1;
+  }
+  const isSpacyY = layout === 'spacyY' || layout === 'spacyXY';
+
+  const groups: Array<Array<Map<number, string>>> = [];
+  for (const root of roots) {
+    const rows: Array<Map<number, string>> = [];
+    const place = (node: TreeNode, sameRow: boolean): void => {
+      if (!sameRow) rows.push(new Map());
+      rows[rows.length - 1].set(colOfLevel(node.level), mermaidNodeDef(node));
+      node.children.forEach((child, childIndex) => place(child, childIndex === 0));
+    };
+    place(root, false);
+    groups.push(rows);
+  }
+
+  const out: string[] = [];
+  if (layout === 'spacyPadding') out.push(...blockPaddingFrontmatter);
+  out.push('block', `columns ${width}`);
+  const blankRow = spaceToken(width);
+  groups.forEach((rows, groupIndex) => {
+    if (groupIndex > 0) {
+      out.push('');
+      if (isSpacyY) out.push(blankRow);
+    }
+    rows.forEach((cells, rowIndex) => {
+      if (rowIndex > 0 && isSpacyY) out.push(blankRow);
+      out.push(renderGridRow(cells, width));
+    });
+  });
+
+  const subtreeLines = (node: TreeNode): string[] => {
+    const result: string[] = [];
+    node.children.forEach((child, childIndex) => {
+      const source = child.label || childIndex === 0 ? node : node.children[childIndex - 1];
+      result.push(blockEdge(source.nodeId, child.nodeId, child.lineType || opts.line, child.label, false));
+      result.push(...subtreeLines(child));
+    });
+    return result;
+  };
+
+  let segments: string[][] = [subtreeLines(roots[0])];
+  for (let rootIndex = 1; rootIndex < roots.length; rootIndex++) {
+    const previous = roots[rootIndex - 1];
+    const current = roots[rootIndex];
+    const segment = [blockEdge(previous.nodeId, current.nodeId, current.lineType || opts.line, null, false)];
+    segment.push(...subtreeLines(current));
+    segments.push(segment);
+  }
+  segments = segments.filter(segment => segment.length);
+  if (segments.length) {
+    out.push('');
+    segments.forEach((segment, segmentIndex) => {
+      if (segmentIndex > 0) out.push('');
+      out.push(...segment);
+    });
+  }
+
+  const styles = mermaidStyleLines(tree.allNodes());
+  if (styles.length) out.push('', ...styles);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// 10.8-10.10 star
+// ---------------------------------------------------------------------------
+
+/** Estimated block size (10.9.3). */
+function estimateBlockSize(node: TreeNode): [number, number] {
+  const textWidth = textPixelWidth(node.text);
+  const shape = node.shape || 'rect';
+  if (shape === 'cyl') return [textWidth + 6, 43 + 0.18 * textWidth];
+  if (shape === 'circle') {
+    const diameter = pyHypot(textWidth, labelHeight) + 6;
+    return [diameter, diameter];
+  }
+  if (shape === 'dbl-circ') {
+    const diameter = pyHypot(textWidth, labelHeight) + 24;
+    return [diameter, diameter];
+  }
+  if (shape === 'diam') return [textWidth + 38, textWidth + 38];
+  return [textWidth + blockPaddingX, blockHeight];
+}
+
+function roundHalfAway(value: number): number {
+  if (value === 0) return 0;
+  const sign = value > 0 ? 1 : -1;
+  return sign * Math.floor(Math.abs(value) + 0.5) || 0;
+}
+
+type StarCell = [number, number];
+
+/** Dimensions used for the star layout. */
+class StarGeometry {
+  readonly span: number;
+  readonly degree: number;
+  readonly minLineLength: number;
+  readonly labelMargin: number;
+  readonly minBlockGap: number;
+  readonly cellGap: number;
+  readonly count: number;
+  readonly cellHeight: number;
+  readonly colPitch: number;
+  readonly rowPitch: number;
+  readonly drawnWidth: number;
+  readonly needs: Array<[number, number]> = [];
+
+  constructor(root: TreeNode, opts: RunOptions) {
+    this.span = opts.spanValue;
+    this.degree = opts.degreeValue;
+    [this.minLineLength, this.labelMargin, this.minBlockGap, this.cellGap] = starLayoutValues[opts.layout];
+    const peripherals = root.children;
+    this.count = peripherals.length;
+    const sizes = [root, ...peripherals].map(estimateBlockSize);
+    const naturalWidth = opts.blockWidthValue !== null
+      ? opts.blockWidthValue
+      : Math.max(...sizes.map(([w]) => w));
+    this.cellHeight = Math.max(...sizes.map(([, h]) => h));
+    const columnWidth = naturalWidth / this.span;
+    this.colPitch = columnWidth + this.cellGap;
+    this.rowPitch = this.cellHeight + this.cellGap;
+    this.drawnWidth = columnWidth * this.span + this.cellGap * (this.span - 1);
+    for (const node of peripherals) {
+      if (node.label) {
+        const needX = textPixelWidth(node.label) + labelPaddingX + 2 * this.labelMargin;
+        const needY = labelHeight + 2 * this.labelMargin;
+        this.needs.push([needX, needY]);
+      } else {
+        this.needs.push([this.minLineLength, this.minLineLength]);
+      }
+    }
+  }
+
+  gapX(cellA: StarCell, cellB: StarCell): number {
+    return Math.abs(cellA[0] - cellB[0]) * this.colPitch - this.drawnWidth;
+  }
+
+  gapY(cellA: StarCell, cellB: StarCell): number {
+    return Math.abs(cellA[1] - cellB[1]) * this.rowPitch - this.cellHeight;
+  }
+
+  cellsForRadius(radius: number): StarCell[] {
+    const cells: StarCell[] = [];
+    for (let index = 0; index < this.count; index++) {
+      const theta = (this.degree + (360 * index) / this.count) * degToRad;
+      const xValue = radius * Math.sin(theta);
+      const yValue = -radius * Math.cos(theta);
+      cells.push([roundHalfAway(xValue / this.colPitch), roundHalfAway(yValue / this.rowPitch)]);
+    }
+    return cells;
+  }
+
+  isValid(cells: StarCell[]): boolean {
+    const center: StarCell = [0, 0];
+    for (let index = 0; index < cells.length; index++) {
+      const [needX, needY] = this.needs[index];
+      if (!(this.gapX(center, cells[index]) >= needX || this.gapY(center, cells[index]) >= needY)) return false;
+    }
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        if (!(this.gapX(cells[i], cells[j]) >= this.minBlockGap
+          || this.gapY(cells[i], cells[j]) >= this.minBlockGap)) return false;
+      }
+    }
+    return true;
+  }
+
+  distortion(cells: StarCell[]): number {
+    const step = 360 / this.count;
+    let maxDelta = 0.0;
+    const distances: number[] = [];
+    cells.forEach(([col, row], index) => {
+      const xPos = col * this.colPitch;
+      const yPos = row * this.rowPitch;
+      const actualAngle = pyMod(Math.atan2(xPos, -yPos) * radToDeg, 360);
+      const targetAngle = pyMod(this.degree + step * index, 360);
+      const diff = Math.abs(actualAngle - targetAngle) % 360;
+      maxDelta = Math.max(maxDelta, Math.min(diff, 360 - diff));
+      distances.push(pyHypot(xPos, yPos));
+    });
+    const meanDistance = pySum(distances) / distances.length;
+    return angleWeight * maxDelta / step + (Math.max(...distances) - Math.min(...distances)) / meanDistance;
+  }
+}
+
+/** Radius search (10.9.10). Returns the cells of a valid layout. */
+function searchStarCells(geometry: StarGeometry, radiusOption: number | null): StarCell[] {
+  if (radiusOption !== null) {
+    const cells = geometry.cellsForRadius(radiusOption);
+    if (!geometry.isValid(cells)) {
+      throw new ConditionError(`star: --radius ${formatG(radiusOption)} では周辺ブロックや線ラベルが重なる`);
+    }
+    return cells;
+  }
+  const radiusStep = Math.min(geometry.colPitch, geometry.rowPitch) / 8;
+  let firstRadius: number | null = null;
+  let bestCells: StarCell[] | null = null;
+  let bestScore = 0;
+  for (let k = 0; ; k++) {
+    const radius = geometry.rowPitch + k * radiusStep;
+    if (radius > geometry.rowPitch * 1000) throw new ConditionError('star: 有効な配置が見つからない');
+    const cells = geometry.cellsForRadius(radius);
+    if (geometry.isValid(cells)) {
+      if (firstRadius === null) firstRadius = radius;
+      const score = geometry.distortion(cells) + sizePenalty * (radius / firstRadius - 1);
+      if (bestCells === null || score < bestScore - 1e-9) {
+        bestCells = cells;
+        bestScore = score;
+      }
+    }
+    if (firstRadius !== null && radius > firstRadius * searchRange) return bestCells!;
+  }
+}
+
+function generateStar(tree: Tree, opts: RunOptions): string[] {
+  const root = requireSingleRoot(tree, 'star');
+  if (!root.children.length) throw new ConditionError('star: レベル2の節が1個以上必要である');
+  if (tree.maxLevel() > 2) throw new ConditionError('star: レベル3以上の節が存在してはならない');
+
+  const geometry = new StarGeometry(root, opts);
+  const cells = searchStarCells(geometry, opts.radiusValue);
+  const span = geometry.span;
+  const spanSuffix = span >= 2 ? `:${span}` : '';
+
+  const placed: Array<[number, number, TreeNode]> = [
+    [0, 0, root],
+    ...root.children.map((node, index): [number, number, TreeNode] => [cells[index][0], cells[index][1], node]),
+  ];
+  const minCol = Math.min(...placed.map(([col]) => col));
+  const endCol = Math.max(...placed.map(([col]) => col)) + span;
+  const width = endCol - minCol;
+  const minRow = Math.min(...placed.map(([, row]) => row));
+  const maxRow = Math.max(...placed.map(([, row]) => row));
+
+  const out: string[] = [];
+  if (opts.layout === 'spacyPadding') out.push(...blockPaddingFrontmatter);
+  out.push('block', `columns ${width}`);
+  for (let row = minRow; row <= maxRow; row++) {
+    const rowBlocks = placed
+      .filter(([, r]) => r === row)
+      .map(([col, , node]) => [col, node] as const)
+      .sort((a, b) => a[0] - b[0]);
+    const parts: string[] = [];
+    let cursor = minCol;
+    for (const [col, node] of rowBlocks) {
+      if (col > cursor) parts.push(spaceToken(col - cursor));
+      parts.push(mermaidNodeDef(node) + spanSuffix);
+      cursor = col + span;
+    }
+    if (endCol > cursor) parts.push(spaceToken(endCol - cursor));
+    out.push(parts.join(' '));
+  }
+
+  const reverse = opts.arrowDirection === 'reverse';
+  out.push('');
+  for (const node of root.children) {
+    out.push(blockEdge(root.nodeId, node.nodeId, node.lineType || opts.line, node.label, reverse));
+  }
+
+  const styles = mermaidStyleLines([root, ...root.children]);
+  if (styles.length) out.push('', ...styles);
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,7 +1577,7 @@ export interface HeadingDiagramBlock {
 }
 
 export interface HeadingDiagramRun {
-  /** 0 on success, 1 on input error (same as the CLI's exit status). */
+  /** 0 on success, 1 on input error, 2 on a command-line error (same as the CLI's exit status). */
   exitCode: number;
   blocks: HeadingDiagramBlock[];
   /** Exactly what the CLI writes to stdout / the `-o` file ('' on failure). */
@@ -1122,22 +1588,66 @@ export interface HeadingDiagramRun {
   log: string[];
 }
 
-function makeHeading(typeId: string, explicitOptions: ExplicitHeadingOptions): string {
-  const optionParts: string[] = [];
-  for (const optionName of meaningfulOptions[typeId] ?? []) {
-    if (explicitOptions[optionName] !== undefined) {
-      optionParts.push(`${optionFlags[optionName]} ${explicitOptions[optionName]}`);
+const choiceText = (choices: readonly string[]): string => choices.map(choice => pyRepr(choice)).join(', ');
+
+/** Validates the options like argparse + `Options` do; returns the argparse error text or the options. */
+function buildRunOptions(explicitOptions: ExplicitHeadingOptions): RunOptions | string {
+  const givenOptions: ExplicitHeadingOptions = {};
+  for (const name of optionOrder) {
+    const value = explicitOptions[name];
+    if (value !== undefined && value !== null) givenOptions[name] = value;
+  }
+  for (const name of optionOrder) {
+    const value = givenOptions[name];
+    if (value === undefined || isNumericHeadingOption(name)) continue;
+    if (!(optionChoices[name] as readonly string[]).includes(value)) {
+      return `argument ${optionFlags[name]}: invalid choice: ${pyRepr(value)} (choose from ${choiceText(optionChoices[name])})`;
     }
   }
-  let heading = `## ${typeId}`;
-  if (optionParts.length) heading += ' (' + optionParts.join(' ') + ')';
-  return heading;
+  const numericValues: Partial<Record<NumericHeadingOptionName, number>> = {};
+  for (const name of numericOptionNames) {
+    const value = givenOptions[name];
+    if (value === undefined) continue;
+    const parsed = parseNumericOption(name, value);
+    if ('error' in parsed) return `argument ${optionFlags[name]}: ${parsed.error}`;
+    numericValues[name] = parsed.value;
+  }
+  return {
+    direction: givenOptions.direction || 'TB',
+    layout: givenOptions.layout || 'normal',
+    line: givenOptions.line || 'solid',
+    arrowDirection: givenOptions.arrowDirection || 'default',
+    curve: givenOptions.curve || 'default',
+    degreeValue: numericValues.degree ?? 0.0,
+    spanValue: numericValues.span ?? 4,
+    radiusValue: numericValues.radius ?? null,
+    blockWidthValue: numericValues.blockWidth ?? null,
+    givenOptions,
+  };
+}
+
+function generateDiagram(typeId: string, normalTree: () => Tree, tableTree: () => Tree, opts: RunOptions, diag: Diagnostics): string[] {
+  if (tableTypeIds.includes(typeId)) return generateTable(tableTree(), typeId);
+  const tree = normalTree();
+  switch (typeId) {
+    case 'hier-mind': return generateMindmap(tree, opts, typeId, false, diag);
+    case 'hier-mindlabel': return generateMindmap(tree, opts, typeId, true, diag);
+    case 'hier-block': return generateHierBlock(tree, opts);
+    case 'hier-flow': return generateHierFlow(tree, opts);
+    case 'fishBone': return generateFishBone(tree);
+    case 'pie': return generatePie(tree, diag);
+    case 'venn': return generateVenn(tree);
+    case 'struct-flow': return generateStructFlow(tree, opts);
+    case 'quadrant': return generateQuadrant(tree);
+    case 'star': return generateStar(tree, opts);
+    default: throw new Error(`unknown diagram type: ${typeId}`);
+  }
 }
 
 /**
  * Port of `run()`.
  * @param sourceText heading-format input
- * @param types diagram type ids (`-t`); null/undefined = generate every type whose condition holds
+ * @param types diagram type ids (`-t`); null/undefined/empty = the CLI's default set
  * @param explicitOptions options given explicitly (`--direction` etc.)
  */
 export function runHeading2Diagram(
@@ -1157,114 +1667,82 @@ export function runHeading2Diagram(
     log: diag.log,
   });
 
-  const explicit: ExplicitHeadingOptions = {};
-  const options = { ...defaultHeadingOptions };
-  for (const optionName of optionOrder) {
-    const value = explicitOptions[optionName];
-    if (value !== undefined && value !== null) {
-      explicit[optionName] = value;
-      options[optionName] = value;
+  // Command line (argparse) errors: exit status 2
+  for (const typeId of types ?? []) {
+    if (!(typeIdList as readonly string[]).includes(typeId)) {
+      diag.error(`argument -t/--type: invalid choice: ${pyRepr(String(typeId))} (choose from ${choiceText(typeIdList)})`);
+      return finish(2);
     }
   }
+  const opts = buildRunOptions(explicitOptions);
+  if (typeof opts === 'string') {
+    diag.error(opts);
+    return finish(2);
+  }
 
+  // The file is read with universal newlines and `utf-8-sig`.
   let text = sourceText;
-  if (text.startsWith('\ufeff')) text = text.slice(1);
-
-  const entries = parseInput(text, diag);
-  if (!entries.some(entry => entry.text !== '')) {
+  if (text.startsWith('﻿')) text = text.slice(1);
+  const records = parseLines(text.replace(/\r\n?/g, '\n').split('\n'), diag);
+  if (!records.some(record => record.info.text !== '')) {
     diag.error('有効な見出し行（テキストが空でない見出し行）が1行も無い');
     return finish(1);
   }
 
-  // Decide what to generate
-  const isExplicit = types !== null && types !== undefined;
-  let targets: string[] = [];
-  if (isExplicit) {
-    for (const typeId of types) {
-      if (!targets.includes(typeId)) targets.push(typeId);
-    }
-  }
+  const explicit = !!types && types.length > 0;
+  const targetTypes = explicit ? [...new Set(types)] : [...defaultTypeIds];
 
-  const needsMainTree = !isExplicit || targets.some(t => !tableTypeIds.includes(t));
-  const needsTableTree = !isExplicit || targets.some(t => tableTypeIds.includes(t));
-
-  let mainRoots: TreeNode[] = [];
-  let tableRoots: TreeNode[] = [];
-  if (needsMainTree) {
-    for (const entry of entries) {
-      if (entry.text === '') {
-        diag.warn(`${entry.lineNo}行目: 内容（テキスト）が空の見出し行である。`
+  // Warn about empty headings only when a non-table type is generated
+  if (targetTypes.some(typeId => !tableTypeIds.includes(typeId))) {
+    for (const record of records) {
+      if (record.info.text === '') {
+        diag.warn(`line ${record.lineNo}: 内容（テキスト）が空の見出し行である。`
           + 'table系以外の図種では無視し、table系では空セルとして扱う');
       }
     }
-    mainRoots = buildTree(entries, false, diag);
-  }
-  if (needsTableTree) tableRoots = buildTree(entries, true, diag);
-
-  const hasLabel = walkDepthFirst(mainRoots).some(node => node.label);
-  if (!isExplicit) {
-    targets = [hasLabel ? 'hier-mindlabel' : 'hier-mind', 'hier-block', 'hier-flow',
-      'fishBone', 'pie', 'venn', 'table', 'struct-flow', 'quadrant'];
   }
 
-  // Input conditions
-  const validTargets: string[] = [];
-  let hasError = false;
-  for (const typeId of targets) {
-    const reason = checkCondition(typeId, mainRoots, tableRoots);
-    if (reason === null) {
-      validTargets.push(typeId);
-    } else if (isExplicit) {
-      diag.error(`図種 ${typeId} の入力条件を満たさない: ${reason}`);
-      hasError = true;
-    } else {
-      diag.warn(`図種 ${typeId} の入力条件を満たさないためスキップする: ${reason}`);
-    }
-  }
-  if (hasError) return finish(1);
-  if (!validTargets.length) {
-    diag.error('生成できた図種が1つも無い');
-    return finish(1);
-  }
+  // Trees are built when first needed
+  let normalCache: Tree | null = null;
+  let tableCache: Tree | null = null;
+  const normalTree = (): Tree => (normalCache ??= buildTree(records, false, diag));
+  const tableTree = (): Tree => (tableCache ??= buildTree(records, true, diag));
 
-  // Generate
   const blocks: HeadingDiagramBlock[] = [];
-  for (const typeId of validTargets) {
-    let outputTypeId = typeId;
-    if (typeId === 'hier-mind' && hasLabel) {
-      diag.warn('hier-mind: 入力にラベル（|x|）が含まれるため、hier-mindlabel として生成する');
-      outputTypeId = 'hier-mindlabel';
+  const errors: string[] = [];
+  for (const typeId of targetTypes) {
+    let actualType = typeId;
+    if (typeId === 'hier-mind' && normalTree().allNodes().some(node => node.label)) {
+      if (explicit) diag.warn('hier-mind: 入力にラベルが含まれるため hier-mindlabel として生成する');
+      actualType = 'hier-mindlabel';
     }
-
-    let body: string;
-    if (outputTypeId === 'hier-mind' || outputTypeId === 'hier-mindlabel') {
-      body = generateMindmap(mainRoots, options, outputTypeId === 'hier-mindlabel', outputTypeId, diag);
-    } else if (typeId === 'hier-flow') {
-      body = generateFlowchart(mainRoots, options);
-    } else if (typeId === 'hier-block') {
-      body = generateHierBlock(mainRoots, options);
-    } else if (typeId === 'struct-flow') {
-      body = generateStructFlow(mainRoots, options);
-    } else if (typeId === 'fishBone') {
-      body = generateFishBone(mainRoots);
-    } else if (typeId === 'pie') {
-      body = generatePie(mainRoots, diag);
-    } else if (typeId === 'venn') {
-      body = generateVenn(mainRoots);
-    } else if (tableTypeIds.includes(typeId)) {
-      body = generateTable(tableRoots, typeId);
-    } else {
-      body = generateQuadrant(mainRoots);
+    let body: string[];
+    try {
+      body = generateDiagram(actualType, normalTree, tableTree, opts, diag);
+    } catch (exc) {
+      if (!(exc instanceof ConditionError)) throw exc;
+      if (explicit) errors.push(`入力条件違反: ${exc.message}`);
+      else diag.warn(`入力条件違反のためスキップする: ${exc.message}`);
+      continue;
     }
-
+    // The heading's options follow the requested type (hier-mind)
+    const heading = headingFor(opts, typeId).replace(`## ${typeId}`, `## ${actualType}`);
     blocks.push({
-      typeId: outputTypeId,
-      language: plantumlTypeIds.has(outputTypeId) ? 'plantuml' : 'mermaid',
-      heading: makeHeading(outputTypeId, explicit),
-      body,
+      typeId: actualType,
+      language: plantumlTypeIds.has(actualType) ? 'plantuml' : 'mermaid',
+      heading,
+      body: body.join('\n'),
     });
   }
 
+  if (errors.length) {
+    for (const message of errors) diag.error(message);
+    return finish(1);
+  }
+  if (!blocks.length) {
+    diag.error('生成できた図種が1つも無い');
+    return finish(1);
+  }
   return finish(0, blocks);
 }
 
@@ -1317,6 +1795,9 @@ export function headingSampleFor(typeId: string): string {
     case 'quadrant':
       return ['# 費用が低い', '## 効果が小さい:#fee', '### 見送り', '### 現状維持', '## 効果が大きい:#efe', '### 優先実施', '### 試行導入',
         '# 費用が高い', '## 効果が小さい:#fef', '### 中止', '### 縮小', '## 効果が大きい:#eff', '### 段階導入', '### フェーズ展開'].join('\n');
+    case 'star':
+      return ['# 円形;会議の準備:#ffd', '## 議題の確定', '## |前回議事録|実線矢印;資料作成',
+        '## |参加者確定|実線矢印;サブ;会場手配:#0FF', '## |会場確定|点線矢印;日程調整', '## 角丸;備品確認'].join('\n');
     default:
       return hierarchySample;
   }
@@ -1334,8 +1815,9 @@ export interface HeadingInfo {
 
 /**
  * Parses the part of a fence info string that follows `heading2diagram`,
- * e.g. `hier-flow --direction LR --layout tight`. The syntax follows the CLI
- * (`-t TYPE` is accepted too); unknown tokens are reported, never fatal.
+ * e.g. `hier-flow --direction LR --layout tight` or `star --degree 30`. The
+ * syntax follows the CLI (`-t TYPE` is accepted too); unknown tokens are
+ * reported, never fatal.
  */
 export function parseHeadingInfo(info: string | null | undefined): HeadingInfo {
   const tokens = (info ?? '').trim().split(/\s+/).filter(Boolean);
@@ -1352,7 +1834,7 @@ export function parseHeadingInfo(info: string | null | undefined): HeadingInfo {
       const eq = token.indexOf('=');
       const name = (eq >= 0 ? token.slice(2, eq) : token.slice(2)) as HeadingOptionName;
       const value = eq >= 0 ? token.slice(eq + 1) : tokens[++i];
-      if (optionOrder.includes(name) && value !== undefined && optionChoices[name].includes(value)) {
+      if (optionOrder.includes(name) && value !== undefined && isValidHeadingOptionValue(name, value)) {
         options[name] = value;
       } else {
         problems.push(`--${name} ${value ?? ''}`.trim());
@@ -1366,14 +1848,25 @@ export function parseHeadingInfo(info: string | null | undefined): HeadingInfo {
   return { typeId: typeId ?? DEFAULT_HEADING_TYPE, options, problems };
 }
 
+/** Drops values that are invalid, equal to the default, or do not apply to the type. */
+function normaliseHeadingOptions(typeId: string, options: ExplicitHeadingOptions): ExplicitHeadingOptions {
+  const result: ExplicitHeadingOptions = {};
+  for (const name of meaningfulOptions[typeId] ?? []) {
+    const value = options[name];
+    if (value !== undefined && isValidHeadingOptionValue(name, value) && !isDefaultOptionValue(name, value)) {
+      result[name] = value;
+    }
+  }
+  return result;
+}
+
 /** Inverse of `parseHeadingInfo`. Options equal to the default, or meaningless for the type, are dropped. */
 export function buildHeadingInfo(typeId: string, options: ExplicitHeadingOptions = {}): string {
   const parts = [typeId];
+  const normalised = normaliseHeadingOptions(typeId, options);
   for (const name of meaningfulOptions[typeId] ?? []) {
-    const value = options[name];
-    if (value && value !== defaultHeadingOptions[name] && optionChoices[name].includes(value)) {
-      parts.push(`${optionFlags[name]} ${value}`);
-    }
+    const value = normalised[name];
+    if (value !== undefined) parts.push(`${optionFlags[name]} ${value}`);
   }
   return parts.join(' ');
 }
@@ -1444,18 +1937,6 @@ export interface HeadingGalleryItem {
   conversion: HeadingConversion;
 }
 
-/** Drops values that equal the default or do not apply to the type. */
-function normaliseHeadingOptions(typeId: string, options: ExplicitHeadingOptions): ExplicitHeadingOptions {
-  const result: ExplicitHeadingOptions = {};
-  for (const name of meaningfulOptions[typeId] ?? []) {
-    const value = options[name];
-    if (value !== undefined && value !== defaultHeadingOptions[name] && optionChoices[name].includes(value)) {
-      result[name] = value;
-    }
-  }
-  return result;
-}
-
 const sameOptions = (a: ExplicitHeadingOptions, b: ExplicitHeadingOptions): boolean =>
   optionOrder.every(name => a[name] === b[name]);
 
@@ -1467,7 +1948,8 @@ const sameOptions = (a: ExplicitHeadingOptions, b: ExplicitHeadingOptions): bool
  *   without `-t`, plus the table variants). `hier-mind` is left out when the
  *   source has labels, because it would be generated as `hier-mindlabel`.
  * - `option` cards: for the current type, each value of each option it
- *   understands, changing that single option and keeping the others.
+ *   understands, changing that single option and keeping the others. The
+ *   numeric `star` options use their presets (`radius` / `blockWidth` have none).
  */
 export function buildHeadingGallery(
   source: string,

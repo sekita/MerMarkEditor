@@ -116,6 +116,8 @@ const ja: Translations = {
   headingDiagramEditor: '見出し形式エディター',
   headingDiagramType: '図種',
   headingDiagramNotApplicable: '入力条件に不適合',
+  headingDiagramAuto: '自動',
+  headingDiagramInvalidNumber: 'このオプションに指定できる数値ではありません',
   headingDiagramSample: 'サンプル',
   headingDiagramSampleHint: '選択中の図種のサンプルでテキストを置き換えます',
   headingDiagramGeneratedCode: '生成コード',

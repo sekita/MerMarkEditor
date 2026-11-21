@@ -474,9 +474,10 @@ graph LR
 ```
 ~~~
 
-- `heading2diagram` の直後の語が図種です。`--direction`、`--layout`、`--line`、`--arrowDirection`、`--curve` は [heading2diagram](https://github.com/sekita/heading2diagram) のコマンドラインと同じ指定です。図種を省略すると `hier-flow` になります。
-- 描画できる図種: `hier-flow`、`hier-block`、`struct-flow`、`fishBone`、`pie`、`venn`、`quadrant`。PlantUML を生成する図種（`hier-mind`、`hier-mindlabel`、`table` 系）はプレビューの代わりに生成コードを表示します。
+- `heading2diagram` の直後の語が図種です。`--direction`、`--layout`、`--line`、`--arrowDirection`、`--curve`、`--degree`、`--span`、`--radius`、`--blockWidth` は [heading2diagram](https://github.com/sekita/heading2diagram)（v1.1.0）のコマンドラインと同じ指定です。図種を省略すると `hier-flow` になります。
+- 描画できる図種: `hier-flow`、`hier-block`、`struct-flow`、`fishBone`、`pie`、`venn`、`quadrant`、`star`。PlantUML を生成する図種（`hier-mind`、`hier-mindlabel`、`table` 系）はプレビューの代わりに生成コードを表示します。
 - 各行には `|ラベル|`、線種、形状、`:#色` を付けられます（例: `### |確認|実線矢印;六角;提案書:#f88`）。詳細は[見出し形式文法](https://github.com/sekita/heading2diagram/blob/main/docs/見出し形式文法.md)を参照してください。
+- `star`（放射状の図）は、第1階層の1個を中心に、第2階層の要素を真上から時計回りに配置します。`--degree`（最初の要素の角度）、`--span`（ブロックが占める列数）、`--radius`（中心からの距離）、`--blockWidth`（配置計算に使うブロック幅）は数値で指定し、エディターでは入力欄に直接入力します（`--radius` と `--blockWidth` は空欄で自動）。
 - 図のエディターは入力に合わせてプレビューを更新し、警告（書き間違い、レベル飛び）の一覧と生成された Mermaid を表示します。手作業で調整したい場合は、通常の Mermaid 図に変換できます。
 - **見出し→図** は、文書内に既にある見出しを図に変換します。見出しの中にカーソルを置く（または複数の見出しを選択する）と、連続した見出しが1つの見出し形式ブロックになります。
 - **見出し図プレビュー** は Code + Preview を開き、右側にファイル全体を heading2diagram の入力として描きます（`heading2diagram.py ファイル` と同じ扱い）。ファイルは変更されず、選んだ図種・オプションはファイルごとに記憶されます。右側はいつでも **Markdown** 表示に戻せます。
@@ -552,7 +553,7 @@ pnpm test:run
 - [Codycody31](https://github.com/Codycody31) - macOS と Linux への対応に心から感謝します！
 - [TipTap](https://tiptap.dev/) - ヘッドレスエディターフレームワーク
 - [Mermaid](https://mermaid.js.org/) - ダイアグラムとチャートの作成ツール
-- [heading2diagram](https://github.com/sekita/heading2diagram) - 見出し形式から図を生成する変換ツール（TypeScript へ移植）
+- [heading2diagram](https://github.com/sekita/heading2diagram) - 見出し形式から図を生成する変換ツール（v1.1.0 を TypeScript へ移植）
 - [Paged.js](https://pagedjs.org/) - PDF プレビューと WebKit 印刷のページレイアウト
 - [Tauri](https://tauri.app/) - デスクトップアプリケーションフレームワーク
 - [Vue.js](https://vuejs.org/) - プログレッシブ JavaScript フレームワーク

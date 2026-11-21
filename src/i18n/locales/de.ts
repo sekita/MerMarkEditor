@@ -116,6 +116,8 @@ const de: Translations = {
   headingDiagramEditor: 'Überschriften-Diagramm-Editor',
   headingDiagramType: 'Typ',
   headingDiagramNotApplicable: 'Eingabe passt nicht',
+  headingDiagramAuto: 'automatisch',
+  headingDiagramInvalidNumber: 'Keine gültige Zahl für diese Option',
   headingDiagramSample: 'Beispiel',
   headingDiagramSampleHint: 'Text durch ein Beispiel für den gewählten Typ ersetzen',
   headingDiagramGeneratedCode: 'Generierter Code',

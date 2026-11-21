@@ -5,13 +5,14 @@ import {
   buildHeadingOptionString,
   convertHeadingBlock,
   parseHeadingInfo,
+  isValidHeadingOptionValue,
   runHeading2Diagram,
   validHeadingTypes,
   type ExplicitHeadingOptions,
 } from '../../utils/heading2diagram';
 
 // Inputs and reference outputs copied verbatim from
-// https://github.com/sekita/heading2diagram/tree/main/examples (v1.0.2).
+// https://github.com/sekita/heading2diagram/tree/main/examples (v1.1.0).
 const fixtures = import.meta.glob('../fixtures/heading2diagram/*.md', {
   query: '?raw',
   import: 'default',
@@ -24,24 +25,32 @@ const fixture = (name: string): string => {
   return text.replace(/\r\n/g, '\n');
 };
 
-// Same table as tests/test_examples.py in the reference repository.
-const referenceCases: Array<[string, string, string, ExplicitHeadingOptions]> = [
-  ['example1.md', 'out1_hier-block.md', 'hier-block', {}],
-  ['example1.md', 'out1_hier-flow.md', 'hier-flow', {}],
-  ['example1.md', 'out1_hier-mind.md', 'hier-mind', {}],
-  ['example1.md', 'out1_struct-flow_tight.md', 'struct-flow', { layout: 'tight' }],
-  ['example2.md', 'out2_hier-block_LR_tight.md', 'hier-block', { direction: 'LR', layout: 'tight' }],
-  ['example2.md', 'out2_hier-flow_LR.md', 'hier-flow', { direction: 'LR' }],
-  ['example2.md', 'out2_hier-mindlabel_LR.md', 'hier-mindlabel', { direction: 'LR' }],
-  ['example2.md', 'out2_struct-flow_tight.md', 'struct-flow', { layout: 'tight' }],
-  ['example3.md', 'out3_fishBone.md', 'fishBone', {}],
-  ['example3.md', 'out3_hier-flow_RL_thickArrow_arrowReverse.md', 'hier-flow',
-    { direction: 'RL', line: 'thickArrow', arrowDirection: 'reverse' }],
-  ['example4.md', 'out4_venn.md', 'venn', {}],
-  ['example5.md', 'out5_table1c.md', 'table1c', {}],
-  ['example6.md', 'out6_quadrant.md', 'quadrant', {}],
-  ['example7.md', 'out7_pie.md', 'pie', {}],
-];
+// Same table as tests/test_examples.py in the reference repository
+// (Japanese inputs, then the English ones with the `_en` suffix).
+const buildCases = (suffix: string): Array<[string, string, string, ExplicitHeadingOptions]> => {
+  const input = (n: number) => `example${n}${suffix}.md`;
+  const output = (n: number, name: string) => `out${n}${suffix}_${name}.md`;
+  return [
+    [input(1), output(1, 'hier-block'), 'hier-block', {}],
+    [input(1), output(1, 'hier-flow'), 'hier-flow', {}],
+    [input(1), output(1, 'hier-mind'), 'hier-mind', {}],
+    [input(1), output(1, 'struct-flow_tight'), 'struct-flow', { layout: 'tight' }],
+    [input(2), output(2, 'hier-block_LR_tight'), 'hier-block', { direction: 'LR', layout: 'tight' }],
+    [input(2), output(2, 'hier-flow_LR'), 'hier-flow', { direction: 'LR' }],
+    [input(2), output(2, 'hier-mindlabel_LR'), 'hier-mindlabel', { direction: 'LR' }],
+    [input(2), output(2, 'struct-flow_tight'), 'struct-flow', { layout: 'tight' }],
+    [input(3), output(3, 'fishBone'), 'fishBone', {}],
+    [input(3), output(3, 'hier-flow_RL_thickArrow_arrowReverse'), 'hier-flow',
+      { direction: 'RL', line: 'thickArrow', arrowDirection: 'reverse' }],
+    [input(4), output(4, 'venn'), 'venn', {}],
+    [input(5), output(5, 'table1c'), 'table1c', {}],
+    [input(6), output(6, 'quadrant'), 'quadrant', {}],
+    [input(7), output(7, 'pie'), 'pie', {}],
+    [input(8), output(8, 'star'), 'star', {}],
+    [input(8), output(8, 'star_degree30_dotted'), 'star', { degree: '30', line: 'dotted' }],
+  ];
+};
+const referenceCases = [...buildCases(''), ...buildCases('_en')];
 
 describe('heading2diagram port', () => {
   it.each(referenceCases)('%s -> %s matches the reference output', (input, output, typeId, options) => {
@@ -55,18 +64,18 @@ describe('heading2diagram port', () => {
     const result = runHeading2Diagram(fixture('example1.md'));
     expect(result.exitCode).toBe(0);
     expect(result.blocks.map(b => b.typeId)).toEqual(
-      ['hier-mind', 'hier-block', 'hier-flow', 'fishBone', 'table', 'struct-flow'].filter(
-        id => id !== 'table', // example1 has level-3 headings, so table is skipped
-      ),
+      // example1 has level-3 headings, so table and star are skipped
+      ['hier-mind', 'hier-block', 'hier-flow', 'fishBone', 'struct-flow'],
     );
-    expect(result.warnings.some(w => w.includes('図種 pie の入力条件を満たさないためスキップする'))).toBe(true);
+    expect(result.warnings).toContain('入力条件違反のためスキップする: pie: レベル3以上の節が存在してはならない');
+    expect(result.warnings).toContain('入力条件違反のためスキップする: star: レベル3以上の節が存在してはならない');
   });
 
   it('fails an explicitly requested type whose condition is violated', () => {
     const result = runHeading2Diagram('# A\n# B', ['hier-flow']);
     expect(result.exitCode).toBe(1);
     expect(result.outputText).toBe('');
-    expect(result.errors).toEqual(['図種 hier-flow の入力条件を満たさない: ルートがちょうど1個であること（ルートが2個ある）']);
+    expect(result.errors).toEqual(['入力条件違反: hier-flow: ルートがちょうど1個である必要がある（ルートが2個ある）']);
   });
 
   it('reports an input without any usable heading', () => {
@@ -79,15 +88,31 @@ describe('heading2diagram port', () => {
     const result = runHeading2Diagram('### A\n# B\n### C\n#D\nnot a heading', ['struct-flow']);
     expect(result.exitCode).toBe(0);
     expect(result.log).toEqual([
-      'warning: 4行目: "#" の直後に空白が無い（見出し行の書き間違いの可能性）。この行を無視する',
-      'warning: 5行目: 見出し行でも空行でもない行を無視する',
-      'warning: 1行目: 先頭の見出し行のレベルが3である（レベル飛び）。ルート（レベル1）として扱う',
-      'warning: 3行目: レベル飛び（直前の見出し行のレベル1に対してレベル3）。直前の見出し行の節の子（レベル2）として扱う',
+      'warning: line 4: "#" の直後に空白が無い（見出し行の書き間違いの可能性）。無視する',
+      'warning: line 5: 見出し行でも空行でもない行である。無視する',
+      'warning: line 1: レベル飛び（レベル3、直前の見出しはレベル0）。レベル1として扱う',
+      'warning: line 3: レベル飛び（レベル3、直前の見出しはレベル1）。レベル2として扱う',
+    ]);
+  });
+
+  it('reads CR / CRLF line ends and full-width blank lines like the CLI', () => {
+    const result = runHeading2Diagram('# A\r## B\r\n\u3000\n## C', ['fishBone']);
+    expect(result.log).toEqual([]);
+    expect(result.blocks[0].body).toBe('ishikawa-beta\n  A\n    B\n    C');
+  });
+
+  it('keeps going after a failed explicit type and reports every violation', () => {
+    const result = runHeading2Diagram('# A\n# B', ['quadrant', 'hier-flow', 'struct-flow']);
+    expect(result.exitCode).toBe(1);
+    expect(result.errors).toEqual([
+      '入力条件違反: quadrant: レベル2の節が各ルートにちょうど2個必要である（"A" の子は0個）',
+      '入力条件違反: hier-flow: ルートがちょうど1個である必要がある（ルートが2個ある）',
     ]);
   });
 
   it('switches hier-mind to hier-mindlabel when labels are present', () => {
     const result = runHeading2Diagram('# A\n## |x|B', ['hier-mind']);
+    expect(result.warnings).toEqual(['hier-mind: 入力にラベルが含まれるため hier-mindlabel として生成する']);
     expect(result.blocks[0].typeId).toBe('hier-mindlabel');
     expect(result.blocks[0].language).toBe('plantuml');
     expect(result.outputText.startsWith('## hier-mindlabel\n```plantuml\n@startmindmap')).toBe(true);
@@ -101,6 +126,54 @@ describe('heading2diagram port', () => {
   it('measures full-width characters as two columns when centring tables', () => {
     const result = runHeading2Diagram('# 項目\n## A\n# x\n## 長い値です', ['tablec']);
     expect(result.blocks[0].body).toBe('@startsalt\n{#\n| 項目 | \u3000\u3000A\n| x\u3000 | 長い値です\n}\n@endsalt');
+  });
+});
+
+describe('heading2diagram star (v1.1.0)', () => {
+  const star = '# Center\n## A\n## |label|solidArrow;B\n## C';
+
+  it('places the peripherals clockwise from the top', () => {
+    const result = runHeading2Diagram(star, ['star'], { span: '1' });
+    expect(result.exitCode).toBe(0);
+    expect(result.blocks[0].heading).toBe('## star (--span 1)');
+    expect(result.blocks[0].body.split('\n').slice(0, 2)).toEqual(['block', expect.stringMatching(/^columns \d+$/)]);
+    expect(result.blocks[0].body).toContain('N1 -- "label" ---> N1_2');
+    expect(result.blocks[0].body).not.toContain(':1'); // span 1 has no suffix
+  });
+
+  it('validates the numeric options like argparse (exit status 2)', () => {
+    expect(runHeading2Diagram(star, ['star'], { degree: 'abc' }).errors)
+      .toEqual(["argument --degree: 数値でない値である: 'abc'"]);
+    expect(runHeading2Diagram(star, ['star'], { span: '0' }).errors)
+      .toEqual(["argument --span: 1以上の整数を指定すること: '0'"]);
+    const radius = runHeading2Diagram(star, ['star'], { radius: '-1' });
+    expect(radius.exitCode).toBe(2);
+    expect(radius.errors).toEqual(["argument --radius: 正の数を指定すること: '-1'"]);
+    expect(runHeading2Diagram(star, ['star'], { direction: 'XX' }).errors[0])
+      .toBe("argument --direction: invalid choice: 'XX' (choose from 'TB', 'TD', 'BT', 'LR', 'RL')");
+  });
+
+  it('reports a radius that makes blocks overlap', () => {
+    const result = runHeading2Diagram(star, ['star'], { radius: '1.5' });
+    expect(result.exitCode).toBe(1);
+    expect(result.errors).toEqual(['入力条件違反: star: --radius 1.5 では周辺ブロックや線ラベルが重なる']);
+  });
+
+  it('requires exactly two levels', () => {
+    expect(convertHeadingBlock('# A', 'star').error).toBe('入力条件違反: star: レベル2の節が1個以上必要である');
+    expect(convertHeadingBlock('# A\n## B\n### C', 'star').error).toBe('入力条件違反: star: レベル3以上の節が存在してはならない');
+  });
+
+  it('accepts the numbers Python accepts', () => {
+    expect(isValidHeadingOptionValue('degree', '-22.5')).toBe(true);
+    expect(isValidHeadingOptionValue('degree', '1e1')).toBe(true);
+    expect(isValidHeadingOptionValue('degree', '３０')).toBe(true);
+    expect(isValidHeadingOptionValue('degree', 'inf')).toBe(false);
+    expect(isValidHeadingOptionValue('span', '2.0')).toBe(false);
+    expect(isValidHeadingOptionValue('radius', '0')).toBe(false);
+    expect(isValidHeadingOptionValue('blockWidth', '120')).toBe(true);
+    expect(isValidHeadingOptionValue('layout', 'tight')).toBe(true);
+    expect(isValidHeadingOptionValue('layout', '30')).toBe(false);
   });
 });
 
@@ -135,6 +208,16 @@ describe('heading2diagram editor API', () => {
     expect(buildHeadingOptionString('pie', {})).toBe('');
   });
 
+  it('handles the numeric star options in info strings', () => {
+    expect(parseHeadingInfo('star --degree 30 --span=2 --radius auto')).toEqual({
+      typeId: 'star', options: { degree: '30', span: '2' }, problems: ['--radius auto'],
+    });
+    // defaults (degree 0, span 4) are dropped, options star does not understand too
+    expect(buildHeadingInfo('star', { degree: '0', span: '4', line: 'dotted', radius: '120', direction: 'LR' }))
+      .toBe('star --line dotted --radius 120');
+    expect(buildHeadingInfo('hier-flow', { degree: '30' })).toBe('hier-flow');
+  });
+
   it('round-trips info strings', () => {
     const info = 'hier-block --direction BT --layout spacyXY --line dottedArrow --arrowDirection reverse';
     const parsed = parseHeadingInfo(info);
@@ -159,13 +242,13 @@ describe('heading2diagram editor API', () => {
     const result = convertHeadingBlock('# A\n## B', 'quadrant');
     expect(result.ok).toBe(false);
     expect(result.code).toBe('');
-    expect(result.error).toContain('図種 quadrant の入力条件を満たさない');
+    expect(result.error).toContain('入力条件違反: quadrant:');
   });
 
   it('lists the types a source can be drawn as', () => {
     expect(validHeadingTypes('# A\n## B:1\n## C:2')).toEqual([
       'hier-mind', 'hier-mindlabel', 'hier-block', 'hier-flow', 'fishBone', 'pie',
-      'table', 'tablec', 'table1', 'table1c', 'table2', 'table2c', 'table3', 'table3c', 'struct-flow',
+      'table', 'tablec', 'table1', 'table1c', 'table2', 'table2c', 'table3', 'table3c', 'struct-flow', 'star',
     ]);
   });
 });
@@ -206,6 +289,17 @@ describe('heading2diagram gallery', () => {
     expect(tb.options).toEqual({}); // back to the default
     expect(items.filter(item => item.current).map(item => item.key))
       .toEqual(['option:direction:LR', 'option:layout:normal', 'option:line:solid', 'option:arrowDirection:default']);
+    expect(items.every(item => item.conversion.ok)).toBe(true);
+  });
+
+  it('uses the presets of the numeric options for star', () => {
+    const items = buildHeadingGallery('# C\n## A\n## B\n## D', 'star', { degree: '30' })
+      .filter(item => item.group === 'option');
+    expect([...new Set(items.map(item => item.optionName))])
+      .toEqual(['layout', 'line', 'arrowDirection', 'degree', 'span']);
+    expect(items).toHaveLength(6 + 6 + 2 + 4 + 4);
+    expect(items.find(item => item.key === 'option:degree:30')!.current).toBe(true);
+    expect(items.find(item => item.key === 'option:degree:0')!.options).toEqual({});
     expect(items.every(item => item.conversion.ok)).toBe(true);
   });
 

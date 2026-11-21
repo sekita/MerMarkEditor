@@ -116,6 +116,8 @@ const zhCN: Translations = {
   headingDiagramEditor: '标题格式编辑器',
   headingDiagramType: '图表类型',
   headingDiagramNotApplicable: '输入不符合条件',
+  headingDiagramAuto: '自动',
+  headingDiagramInvalidNumber: '该选项的数值无效',
   headingDiagramSample: '示例',
   headingDiagramSampleHint: '用所选类型的示例替换文本',
   headingDiagramGeneratedCode: '生成的代码',
