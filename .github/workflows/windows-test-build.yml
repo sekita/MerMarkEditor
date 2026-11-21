@@ -1,20 +1,32 @@
 name: Windows test build
 
-# Manual, unsigned Windows build for trying a branch or fork.
-# Run it from the Actions tab ("Run workflow"), then download the
-# "mermark-windows" artifact from the finished run. It does not create a
-# release and needs no signing secrets (updater artifacts are disabled by
-# src-tauri/tauri.windows-test.conf.json).
+# Builds the Windows executable and installer without signing secrets.
+# Run it from the Actions tab ("Run workflow"). With "publish" checked
+# (default) the files are published as a GitHub Release, which anyone can
+# download without a GitHub account. The release text comes from
+# .github/windows-release-notes.md.
+#
+# The build is tagged v<version>-h2d.<run number>; the app checks this
+# repository's releases for newer builds (see src/utils/fork-release.ts)
+# instead of the upstream updater.
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish as a GitHub Release (downloadable without a GitHub account)"
+        type: boolean
+        default: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      VITE_RELEASE_REPO: ${{ github.repository }}
+      VITE_RELEASE_BUILD: ${{ github.run_number }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,11 +48,40 @@ jobs:
       - name: Build
         run: pnpm tauri build --config src-tauri/tauri.windows-test.conf.json
 
-      - name: Upload executables
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $build = $env:VITE_RELEASE_BUILD
+          $base = "MerMark-Editor-$version-h2d.$build"
+          New-Item -ItemType Directory -Force release-files | Out-Null
+          $exe = Get-ChildItem src-tauri/target/release -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "No executable found in src-tauri/target/release" }
+          Compress-Archive -Path $exe.FullName -DestinationPath "release-files/$base-portable.zip"
+          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis -Filter *-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw "No NSIS installer found" }
+          Copy-Item $setup.FullName "release-files/$base-setup.exe"
+          "RELEASE_TAG=v$version-h2d.$build" >> $env:GITHUB_ENV
+          "RELEASE_TITLE=MerMark Editor $version + heading2diagram (build $build)" >> $env:GITHUB_ENV
+          Get-ChildItem release-files | Format-Table Name, Length
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: mermark-windows
           if-no-files-found: error
-          path: |
-            src-tauri/target/release/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe
+          path: release-files/*
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:RELEASE_TAG (Get-ChildItem release-files).FullName `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title $env:RELEASE_TITLE `
+            --notes-file .github/windows-release-notes.md `
+            --latest
+          "Release: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG" >> $env:GITHUB_STEP_SUMMARY
