@@ -1,0 +1,818 @@
+import { ref, computed } from 'vue';
+import en from './locales/en';
+import pl from './locales/pl';
+import zhCN from './locales/zh-CN';
+import de from './locales/de';
+import ja from './locales/ja';
+
+export type Locale = 'en' | 'pl' | 'zh-CN' | 'de' | 'ja';
+
+export interface Translations {
+  shortcutSearch: string;
+  shortcutSettingsHelp: string;
+  shortcutResetAll: string;
+  shortcutReset: string;
+  shortcutChange: string;
+  shortcutRemove: string;
+  shortcutAdd: string;
+  shortcutUnassigned: string;
+  shortcutRecord: string;
+  shortcutInvalid: string;
+  shortcutReserved: string;
+  shortcutConflict: (action: string) => string;
+
+  noSearchResults: string;
+  commandPalette: string;
+  quickOpen: string;
+  goToHeading: string;
+  replace: string;
+  replaceAll: string;
+  toggleComment: string;
+  selectNextOccurrence: string;
+
+  documentStyle: string;
+  styleOverrides: string;
+  styleOverridesHint: string;
+  styleDefault: string;
+  baseFontSize: string;
+  paragraphSpacing: string;
+  contentWidth: string;
+  editorMargin: string;
+  editorMarginPageless: string;
+  editorMarginSmall: string;
+  editorMarginMedium: string;
+  editorMarginLarge: string;
+  resetStyleValue: string;
+  resetStyleOverrides: string;
+  pdfPresetCurrentEditor: string;
+
+  // App
+  appName: string;
+  mathInline: string;
+  mathBlock: string;
+  mathEdit: string;
+  mathDelete: string;
+  mathSource: string;
+  aiCodexPathHint: string;
+
+  // Toolbar - File operations
+  new: string;
+  open: string;
+  save: string;
+  saveAs: string;
+  exportPdf: string;
+  exportDocx: string;
+  presentMarp: string;
+
+  // Toolbar - Edit operations
+  undo: string;
+  redo: string;
+  moveLineUp: string;
+  moveLineDown: string;
+
+  // Toolbar - Text styles
+  paragraph: string;
+  heading: string;
+  headingLevel: (level: number) => string;
+
+  // Toolbar - Formatting
+  bold: string;
+  boldTooltip: string;
+  italic: string;
+  italicTooltip: string;
+  strikethrough: string;
+  strikethroughTooltip: string;
+  inlineCode: string;
+  inlineCodeTooltip: string;
+
+  // Toolbar - Lists
+  bulletList: string;
+  orderedList: string;
+  taskList: string;
+
+  // Toolbar - Blocks
+  blockquote: string;
+  codeBlock: string;
+  horizontalRule: string;
+  pageBreak: string;
+
+  // Toolbar - Links & Media
+  link: string;
+  linkPrompt: string;
+  image: string;
+  imagePrompt: string;
+  imageFromUrl: string;
+  imageFromFile: string;
+
+  // Toolbar - Table
+  table: string;
+  insertTable: string;
+  addRowAbove: string;
+  addRowBelow: string;
+  addColumnBefore: string;
+  addColumnAfter: string;
+  deleteRow: string;
+  deleteColumn: string;
+  deleteTable: string;
+
+  // Toolbar - Mermaid
+  mermaid: string;
+  insertMermaid: string;
+
+  // Heading-format diagram (heading2diagram)
+  headingDiagram: string;
+  insertHeadingDiagram: string;
+  headingDiagramEditor: string;
+  headingDiagramType: string;
+  headingDiagramNotApplicable: string;
+  headingDiagramSample: string;
+  headingDiagramSampleHint: string;
+  headingDiagramGeneratedCode: string;
+  headingDiagramToMermaid: string;
+  headingDiagramToMermaidHint: string;
+  headingDiagramPlantumlNote: string;
+  headingDiagramWarnings: string;
+  headingDiagramPreviewTab: string;
+  headingDiagramGalleryTab: string;
+  headingDiagramGalleryHint: string;
+  headingDiagramGalleryTypes: string;
+  headingDiagramGalleryOptions: string;
+  headingDiagramGalleryCurrent: string;
+  headingDiagramGalleryEmpty: string;
+  enterHeadingCode: string;
+  headingsToDiagram: string;
+  headingsToDiagramTooltip: string;
+  headingsToDiagramMenu: string;
+  headingPreview: string;
+  headingPreviewTooltip: string;
+  headingPreviewModeMarkdown: string;
+  headingPreviewModeDiagram: string;
+  headingPreviewFileNote: string;
+
+  // Toolbar - Footnotes
+  footnote: string;
+  insertFootnote: string;
+  footnotes: string;
+  addFootnote: string;
+  deleteFootnotes: string;
+  noFootnotes: string;
+  footnoteContentPlaceholder: string;
+  footnoteBacklink: string;
+
+  // Toolbar - Code View
+  codeView: string;
+  visualView: string;
+
+  // Toolbar - Split View
+  splitView: string;
+  singleView: string;
+
+  // Toolbar - Split Editor (code + live preview)
+  splitEditor: string;
+  splitEditorTooltip: string;
+  splitEditorExit: string;
+
+  // Toolbar - Diff Preview
+  changes: string;
+  noChanges: string;
+  closeDiff: string;
+  compareTabs: string;
+  compareTabsTooltip: string;
+
+  // Keyboard Shortcuts
+  keyboardShortcuts: string;
+  shortcutAction: string;
+  shortcutKey: string;
+  treeMove: string;
+  treeExtendSelection: string;
+  treeExpandCollapse: string;
+  treeOpenItem: string;
+  treeToggleSelection: string;
+  nextTab: string;
+  previousTab: string;
+  jumpToTab: string;
+  toggleCodeView: string;
+  zoomInOut: string;
+  resetZoom: string;
+  findInCurrentDocument: string;
+  searchWorkspace: string;
+  documentSearch: string;
+  documentSearchPlaceholder: string;
+  documentSearchPrevious: string;
+  documentSearchNext: string;
+  documentSearchClose: string;
+
+  // Stats
+  stats: string;
+  characters: string;
+  words: string;
+  tokens: string;
+  tokensTooltip: string;
+
+  // Editor
+  placeholder: string;
+
+  // Dialogs
+  unsavedChanges: string;
+  unsavedChangesMessage: string;
+  dontSave: string;
+  cancel: string;
+  saveAndClose: string;
+
+  // Tabs
+  newDocument: string;
+  closeTab: string;
+  closeTabTooltip: string;
+
+  // Mermaid Node
+  editDiagram: string;
+  saveDiagram: string;
+  cancelEdit: string;
+  diagramError: string;
+  printScale: string;
+  diagramSize: string;
+  templates: string;
+  basic: string;
+  deleteDiagram: string;
+  deleteImage: string;
+  moreTemplates: string;
+  mermaidDiagramTemplates: string;
+  enterMermaidCode: string;
+  zoomIn: string;
+  zoomOut: string;
+  reset: string;
+  fit: string;
+  fullscreen: string;
+  close: string;
+
+  // Template categories
+  categoryBasic: string;
+  categoryStatesProcesses: string;
+  categoryDataRelations: string;
+  categoryGitRequirements: string;
+  categoryC4Model: string;
+  categoryAdvanced: string;
+
+  // File dialogs
+  openFile: string;
+  saveFile: string;
+  markdownFiles: string;
+  allFiles: string;
+
+  // Settings
+  settings: string;
+  autoSave: string;
+  autoSaveOn: string;
+  autoSaveOff: string;
+  wordWrap: string;
+  dropFilesHere: string;
+  dropFolderHere: string;
+  editorFont: string;
+  codeFont: string;
+  codeTheme: string;
+  lineHeight: string;
+  mermaidOpeningDelimiter: string;
+  mermaidClosingDelimiter: string;
+  mermaidDelimiterHint: string;
+  mermaidWriteFormat: string;
+  mermaidReadFormats: string;
+  mermaidCustomFormat: string;
+  mermaidCustomFormatClear: string;
+  mermaidWriteFormatHelp: string;
+  mermaidReadFormatsHelp: string;
+  mermaidCustomFormatHelp: string;
+  spellcheck: string;
+  showLineNumbers: string;
+  expandTabs: string;
+  appearance: string;
+  editor: string;
+  code: string;
+  general: string;
+  on: string;
+  off: string;
+  language: string;
+
+  // Update dialog
+  updateAvailable: string;
+  newVersionAvailable: string;
+  downloadingUpdate: string;
+  later: string;
+  updating: string;
+  updateNow: string;
+  openDownloadPage: string;
+  forkUpdateNote: string;
+  whatsNew: string;
+  whatsNewIn: string;
+  noReleaseNotesForBuild: string;
+  fullChangelog: string;
+  changelog: string;
+  supportDev: string;
+  supportDevTooltip: string;
+  buyMeACoffee: string;
+  updatesTab: string;
+  checkForUpdates: string;
+  checkingForUpdates: string;
+  upToDate: string;
+  flatpakUpdatesNote: string;
+
+  // Split view / Panes
+  dragTabHere: string;
+  orOpenFileInPane: string;
+  dropTabHere: string;
+
+  // Save confirm dialog
+  fileHasUnsavedChanges: (fileName: string) => string;
+  saveBeforeClosing: string;
+  discard: string;
+
+  // External link dialog
+  openExternalLink: string;
+  confirmNavigateTo: string;
+  openLink: string;
+
+  // Editor Zoom
+  zoom: string;
+
+  // Theme
+  darkMode: string;
+  lightMode: string;
+
+  // File watching & conflict
+  fileReloadedExternally: (fileName: string) => string;
+  fileReloaded: string;
+  fileReloadError: string;
+  fileChangedExternally: string;
+  fileConflictMessage: string;
+  keepMyChanges: string;
+  loadExternalVersion: string;
+  externalChanges: string;
+  reloadFile: string;
+  preSaveConflict: string;
+  preSaveConflictMessage: string;
+  saveAnyway: string;
+  fileDeletedExternally: (fileName: string) => string;
+  anchorNotFound: (anchor: string) => string;
+
+  // Table of Contents
+  tableOfContents: string;
+  tocTooltip: string;
+  tocEmpty: string;
+
+  // Merge editor
+  diffView: string;
+  mergeView: string;
+  acceptAllExternal: string;
+  rejectAllExternal: string;
+  mergeHint: string;
+  unchangedLines: string;
+  collapseLines: string;
+  changeHunk: string;
+  keepOriginal: string;
+  acceptExternal: string;
+  changesAccepted: string;
+  applyMerge: string;
+
+  // Layout customization
+  layout: string;
+  topToolbar: string;
+  bottomStatusBar: string;
+  leftSidebar: string;
+  hiddenItems: string;
+  resetLayout: string;
+  layoutDescription: string;
+  moveTo: string;
+
+  // Fonts
+  systemFonts: string;
+  otherFonts: string;
+
+  // Session
+  recentFiles: string;
+  clearRecentFiles: string;
+  noRecentFiles: string;
+  restoreSession: string;
+
+  // AI
+  aiTabLabel: string;
+  aiEnableLabel: string;
+  aiCheckCliHealthOnStartup: string;
+  aiCheckCliHealthOnStartupHelper: string;
+  aiFlatpakCliNote: string;
+  aiDefaultCli: string;
+  aiPanelSide: string;
+  aiPanelSideLeft: string;
+  aiPanelSideRight: string;
+  aiSnapshotsKeep: string;
+  aiOpenSnapshotsFolder: string;
+  aiBypassLabel: string;
+  aiBypassHelper: string;
+  aiCliStatusClaude: string;
+  aiCliStatusCodex: string;
+  aiCliStatusOllama: string;
+  aiOllamaConnected: (info: string) => string;
+  aiOllamaNotRunning: string;
+  aiOllamaLocalHint: string;
+  aiOllamaBaseUrlPlaceholder: string;
+  aiOllamaBaseUrlHelper: string;
+  aiOllamaNumCtxLabel: string;
+  aiOllamaNumCtxHelper: string;
+  aiCliStatusOpenai: string;
+  aiOpenaiConnected: (info: string) => string;
+  aiOpenaiNotRunning: string;
+  aiOpenaiLocalHint: string;
+  aiOpenaiBaseUrlPlaceholder: string;
+  aiOpenaiBaseUrlHelper: string;
+  aiStatusOk: (account: string) => string;
+  aiStatusBinaryMissing: string;
+  aiStatusAuthRequired: string;
+  aiInstall: string;
+  aiAuthenticate: string;
+  aiRecheck: string;
+  aiCliUpdateAvailable: (latest: string) => string;
+  aiCliUpdate: string;
+  aiCliUpdating: string;
+  aiCliUpdateFailed: string;
+  aiAuditLog: string;
+  aiAuditClear: string;
+  aiAuditExport: string;
+  aiFirstRunTitle: string;
+  aiFirstRunBody: string;
+  aiFirstRunOk: string;
+  aiFirstRunOpenSettings: string;
+  aiPanelTitle: string;
+  aiSendButton: string;
+  aiCancelButton: string;
+  aiNewChat: string;
+  aiHistory: string;
+  aiHistoryRestore: string;
+  aiHistoryPin: string;
+  aiHistoryUnpin: string;
+  aiHistoryExport: string;
+  aiHistoryDelete: string;
+  aiAccessMapTitle: string;
+  aiAccessReadPaths: string;
+  aiAccessWritePaths: string;
+  aiAccessTools: string;
+  aiAccessToolBash: string;
+  aiAccessToolNetwork: string;
+  aiAccessToolFileRead: string;
+  aiAccessToolFileWrite: string;
+  aiToolConfirmTitle: string;
+  aiToolConfirmAllow: string;
+  aiToolConfirmDeny: string;
+  aiTmpRecoveryTitle: string;
+  aiTmpRecoveryRestore: string;
+  aiTmpRecoveryDiscard: string;
+  aiTmpRecoveryShowDiff: string;
+  aiToggleTooltip: string;
+  aiStatusLoading: string;
+  aiStatusUnknown: string;
+  aiResetFirstRun: string;
+  aiSnapshotsKeepHelper: string;
+  aiAuditEmpty: string;
+  aiFullscreen: string;
+  aiExitFullscreen: string;
+  aiClose: string;
+  aiModel: string;
+  aiEmptyHint: string;
+  aiEmptyKeyHint: string;
+  aiContextNearlyFull: string;
+  aiModelMissing: string;
+  aiEffort: string;
+  aiRevertSnapshot: string;
+  aiMinimizeToTab: string;
+  aiRestorePanel: string;
+  aiAttachImage: string;
+  aiComposerPlaceholder: string;
+  aiWorkingPlease: string;
+  aiConnecting: string;
+  aiDocNotSavedTitle: string;
+  aiDocNotSavedHint: string;
+  aiPinSendLabel: string;
+  aiPinClearAll: string;
+  aiPinClearAllTooltip: string;
+  aiPinRemoveTooltip: string;
+  aiPinLiveLabel: string;
+  aiPinNotPinned: string;
+  aiPinAdd: string;
+  aiPinCount: (n: number) => string;
+  aiImageClear: string;
+  aiImageClearAllTooltip: string;
+  aiImagePreviewHint: string;
+  aiImageRemoveTooltip: string;
+  aiImagesAttached: (n: number) => string;
+  aiThreadCount: (n: number) => string;
+  aiThreadEmpty: string;
+  aiThreadDelete: string;
+  aiAttachmentCount: (n: number) => string;
+  aiSentAttachmentLabel: (n: number) => string;
+  aiSentAttachmentHint: string;
+  aiSentAttachmentTooltip: (n: number) => string;
+  aiSentImagesLabel: (n: number) => string;
+  aiToolChipTooltip: string;
+  aiToolUsed: (tool: string) => string;
+  aiAccessToolFileReadDesc: string;
+  aiAccessToolFileWriteDesc: string;
+  aiAccessToolBashDesc: string;
+  aiAccessToolNetworkDesc: string;
+  aiSnapshotPinTooltip: string;
+  aiSnapshotUnpinTooltip: string;
+  aiSnapshotExportTooltip: string;
+  aiSnapshotsTitle: string;
+  aiSnapshotsHint: string;
+  aiSnapshotsEmpty: string;
+  aiSnapshotPinnedBadge: string;
+  aiSnapshotRestoreTooltip: string;
+  aiSnapshotRestoring: string;
+  aiSnapshotRestore: string;
+  aiSnapshotPin: string;
+  aiSnapshotUnpin: string;
+  aiSnapshotExport: string;
+  aiSnapshotDeleteTooltip: string;
+  aiRemove: string;
+  aiThinking: string;
+  aiAccessAllowedToolsTitle: string;
+  aiAccessAllowedToolsDesc: string;
+  aiAccessReadableFiles: string;
+  aiAccessWritableFiles: string;
+  aiToolFullArgs: string;
+  aiSettingsCliHeading: string;
+  aiSettingsEffortHeading: string;
+  aiSettingsCopyAudit: string;
+  aiSettingsModelIdPlaceholder: string;
+  aiSettingsCliPathHeading: string;
+  aiSettingsCliPathHelper: string;
+  aiSettingsCliPathBrowse: string;
+  aiSettingsCliPathPlaceholder: string;
+  aiSettingsCliPathClear: string;
+  collapseSidebar: string;
+  expandSidebar: string;
+
+  // Theme variant
+  themeVariantLabel: string;
+  themeVariantHint: string;
+  themeVariantDefault: string;
+  themeVariantMinimal: string;
+
+  // Workspace
+  workspace: string;
+  workspaceLabel: string;
+  openFolder: string;
+  noWorkspaceOpen: string;
+  recentWorkspaces: string;
+  closeWorkspace: string;
+  closeAllWorkspaces: string;
+  refreshTree: string;
+  showWorkspaceSidebar: string;
+  workspaceSidebarShow: string;
+  workspaceSidebarHide: string;
+  workspaceContextNewFile: string;
+  workspaceContextNewFolder: string;
+  workspaceContextNewFileSibling: string;
+  workspaceContextNewFolderSibling: string;
+  workspaceContextRename: string;
+  workspaceContextCopyPath: string;
+  workspaceContextDelete: string;
+  workspaceContextRevealInOs: string;
+  workspaceNewFilePrompt: string;
+  workspaceNewFolderPrompt: string;
+  workspaceRenamePrompt: string;
+  workspaceConfirmDelete: (name: string) => string;
+  workspaceEmptyHint: string;
+  workspaceErrorLoad: string;
+  workspaceClearRecents: string;
+  workspaceLoading: string;
+  workspaces: string;
+  addWorkspace: string;
+  expandAllSections: string;
+  collapseAllSections: string;
+  workspaceSortByName: string;
+  workspaceSortByModified: string;
+  workspaceSortMenu: string;
+  workspaceSortFolder: string;
+  sortNameAsc: string;
+  sortNameDesc: string;
+  sortModifiedDesc: string;
+  sortModifiedAsc: string;
+  sortInherit: string;
+  workspaceViewChanges: string;
+  workspaceItemsLabel: string;
+  activeWorkspaceContext: string;
+  workspaceEmptyRecentHint: string;
+  workspaceQuickSwitcher: string;
+  workspaceQuickSwitcherPlaceholder: string;
+  workspaceQuickSwitcherNoMatches: string;
+  workspaceQuickSwitcherOpenBadge: string;
+  workspaceQuickSwitcherRecentBadge: string;
+  qsHintNavigate: string;
+  qsHintOpen: string;
+  qsHintCancel: string;
+  create: string;
+  rename: string;
+  workspaceErrorNoPathSeparators: string;
+  workspaceErrorReservedName: string;
+  newFileInWorkspaceTooltip: (workspace: string) => string;
+  qsSectionFiles: string;
+  qsSectionContent: string;
+  qsContentSearching: string;
+  qsContentTruncated: string;
+
+  // Mermaid AI assist
+  aiAssistMermaidButton: string;
+  aiAssistMermaidTitle: string;
+  aiAssistMermaidPlaceholder: string;
+  aiAssistMermaidProposed: string;
+  aiAssistMermaidApply: string;
+  aiAssistMermaidPromptLabel: string;
+  aiAssistMermaidHint: string;
+
+  // Tab context menu
+  tabPin: string;
+  tabUnpin: string;
+  tabPinned: string;
+  tabClose: string;
+  tabCloseOthers: string;
+  tabCloseAll: string;
+  tabCloseAllButPinned: string;
+  tabCloseSaved: string;
+
+  // Open split-button
+  openMenuTooltip: string;
+
+  // PDF export dialog
+  pdfPreviewTitle: string;
+  pdfNoPreset: string;
+  pdfBuiltinPresets: string;
+  pdfCustomPresets: string;
+  pdfSavePreset: string;
+  pdfDeletePreset: string;
+  pdfConfirmDeletePreset: string;
+  pdfPresetNamePlaceholder: string;
+  pdfSavePresetTitle: string;
+  pdfTabLayout: string;
+  pdfTabTypography: string;
+  pdfTabHeader: string;
+  pdfTabWatermark: string;
+  pdfFontSize: string;
+  pdfFontSizeXs: string;
+  pdfFontSizeS: string;
+  pdfFontSizeM: string;
+  pdfFontSizeL: string;
+  pdfFontSizeXl: string;
+  pdfMarginPreset: string;
+  pdfMarginNarrow: string;
+  pdfMarginNormal: string;
+  pdfMarginWide: string;
+  pdfMarginCustom: string;
+  pdfMarginTop: string;
+  pdfMarginRight: string;
+  pdfMarginBottom: string;
+  pdfMarginLeft: string;
+  pdfPageSize: string;
+  pdfBodyFont: string;
+  pdfHeadingFont: string;
+  pdfFontGroupSerif: string;
+  pdfFontGroupSans: string;
+  pdfFontGroupMono: string;
+  pdfFontSampleBody: string;
+  pdfFontSampleHeading: string;
+  pdfAccentColor: string;
+  pdfTableHeaderBg: string;
+  pdfHeaderEnabled: string;
+  pdfFooterEnabled: string;
+  pdfPositionLeft: string;
+  pdfPositionCenter: string;
+  pdfPositionRight: string;
+  pdfTemplateVars: string;
+  pdfShowPageNumbers: string;
+  pdfPageNumberFormat: string;
+  pdfPageNumberFormatN: string;
+  pdfPageNumberFormatNOfTotal: string;
+  pdfPageNumberFormatPageNOfTotal: string;
+  pdfPageNumberFormatPageNOfTotalLive: (n: number, total: number) => string;
+  pdfStartPageNumber: string;
+  pdfWatermarkEnabled: string;
+  pdfWatermarkText: string;
+  pdfWatermarkColor: string;
+  pdfWatermarkOpacity: (pct: number) => string;
+  pdfWatermarkRotate: (deg: number) => string;
+  pdfWatermarkSize: string;
+  pdfBtnClose: string;
+  pdfBtnPrint: string;
+  pdfBtnCancel: string;
+  pdfBtnSave: string;
+  pdfPresetReport: string;
+  pdfPresetNotes: string;
+  pdfPresetDraft: string;
+  pdfTabToc: string;
+  pdfShowToc: string;
+  pdfTocTitle: string;
+  pdfTocDepth: string;
+  pdfTocPageBreak: string;
+
+  // Marp presentation
+  marpPreviewTitle: string;
+  marpExportHtml: string;
+  marpPrevSlide: string;
+  marpNextSlide: string;
+  marpSlideCounter: (current: number, total: number) => string;
+  marpFullscreen: string;
+  marpPlay: string;
+  marpPause: string;
+  marpBarNewSlide: string;
+  marpBarTheme: string;
+  marpBarLayout: string;
+  marpBarLayoutDefault: string;
+  marpBarBackground: string;
+  marpBgLocalFull: string;
+  marpBgLocalLeft: string;
+  marpBgLocalRight: string;
+  marpBgUrl: string;
+  marpBarPaginate: string;
+  marpBarSize: string;
+  marpBarPresent: string;
+  marpBarPreview: string;
+  marpBarFont: string;
+  marpTipFont: string;
+  marpFontDefault: string;
+  marpThemeTitle: string;
+  marpBgTitle: string;
+  marpLayoutTitle: string;
+  marpTipNewSlide: string;
+  marpTipTheme: string;
+  marpTipLayout: string;
+  marpTipBackground: string;
+  marpTipPaginate: string;
+  marpTipSize: string;
+  marpTipPresent: string;
+  marpTipPreview: string;
+  marpLayoutLeadDesc: string;
+  marpLayoutInvertDesc: string;
+  marpLayoutDefaultDesc: string;
+  newFileChoiceTitle: string;
+  newFilePlain: string;
+  newFilePlainDesc: string;
+  newFileMarp: string;
+  newFileMarpDesc: string;
+  marpSeedTitle: string;
+  marpSeedSubtitle: string;
+}
+
+const translations: Record<Locale, Translations> = {
+  en,
+  pl,
+  'zh-CN': zhCN,
+  de,
+  ja,
+};
+
+const localeLabels: Record<Locale, string> = {
+  en: 'English',
+  pl: 'Polski',
+  'zh-CN': '简体中文',
+  de: 'Deutsch',
+  ja: '日本語',
+};
+
+function getInitialLocale(): Locale {
+  const saved = localStorage.getItem('mermark-locale') as Locale | null;
+  if (saved && saved in translations) return saved;
+  return 'en';
+}
+
+const currentLocale = ref<Locale>(getInitialLocale());
+
+export const t = computed(() => translations[currentLocale.value]);
+
+export function useI18n() {
+  const locale = computed({
+    get: () => currentLocale.value,
+    set: (value: Locale) => {
+      currentLocale.value = value;
+      localStorage.setItem('mermark-locale', value);
+    },
+  });
+
+  const setLocale = (newLocale: Locale) => {
+    locale.value = newLocale;
+  };
+
+  const toggleLocale = () => {
+    const locales = availableLocales;
+    const idx = locales.indexOf(locale.value);
+    locale.value = locales[(idx + 1) % locales.length];
+  };
+
+  const availableLocales: Locale[] = ['en', 'pl', 'zh-CN', 'de', 'ja'];
+
+  return {
+    locale,
+    t,
+    setLocale,
+    toggleLocale,
+    availableLocales,
+    localeLabels,
+  };
+}
+
+export default translations;
